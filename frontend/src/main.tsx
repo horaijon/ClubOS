@@ -1,3 +1,4 @@
+import "@fontsource-variable/manrope";
 import { createRoot } from 'react-dom/client';
 import Entry from './Entry';
 import './styles.css';

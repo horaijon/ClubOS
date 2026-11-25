@@ -96,3 +96,25 @@ test('withdrawal opens a funding recovery plan and approval changes persisted al
   await expect.poll(async ()=>(await snapshot()).metrics.planned).toBeLessThan(6000000)
   expect((await snapshot()).metrics.projected_funding).toBe(4500000)
 })
+
+
+test('event trends filter chart history and export CSV', async ({page})=>{
+  await page.request.post('/api/auth/demo')
+  await page.goto('/#dashboard')
+  await expect(page.getByRole('heading',{name:'Projected funding'})).toBeVisible()
+  await page.getByRole('navigation').getByRole('link',{name:'Event trends'}).click()
+  await expect(page.getByRole('heading',{name:'Tasks by status'})).toBeVisible()
+  await page.getByRole('button',{name:'30 days',exact:true}).click()
+  await expect(page.getByRole('button',{name:'30 days',exact:true})).toHaveAttribute('aria-pressed','true')
+  await expect(page.getByRole('region',{name:/Automation activity over 30 days/})).toBeVisible()
+  const downloading=page.waitForEvent('download')
+  await page.getByRole('button',{name:'Export CSV'}).click()
+  const report=await downloading
+  expect(report.suggestedFilename()).toBe('clubos-event-trends.csv')
+  let csv=''
+  for await(const chunk of await report.createReadStream())csv+=chunk.toString()
+  expect(csv.split('\n')).toHaveLength(31)
+  expect(csv).toContain('date,new_registrations,total_registrations,completed_runs,approval_runs')
+  await page.getByRole('navigation').getByRole('link',{name:'Tasks & timeline'}).click()
+  await expect(page.getByRole('heading',{name:'Event work board'})).toBeVisible()
+})

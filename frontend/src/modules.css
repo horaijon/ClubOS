@@ -40,3 +40,12 @@
  .m-budget-impact{padding:12px}
  .m-budget-impact table{font-size:.8125rem}
 }
+
+.m-task-board{padding:14px;scroll-padding-inline:14px}
+.m-task-board .m-column{flex:1 0 190px;border-radius:15px;background:var(--bg)}
+.m-task-board .m-columnhead{padding:4px 2px 12px;font-size:.86rem}
+.m-task-board .m-columnhead svg{color:var(--accent)}
+.m-task-board .m-item{border-radius:12px;box-shadow:0 3px 10px #1539750e}
+.m-task-board .m-task-description{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;line-height:1.45}
+.m-task-meta{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.m-task-meta small:last-child{white-space:nowrap}

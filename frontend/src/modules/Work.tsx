@@ -1,23 +1,46 @@
 import { useState } from 'react'
-import { ArrowRight, CalendarDays, Check, ListChecks, Pencil, Plus, Sparkles, Wallet } from 'lucide-react'
+import { ArrowRight, CalendarDays, Check, CircleAlert, ClipboardCheck, Clock3, ListChecks, Pencil, Plus, Sparkles, Wallet } from 'lucide-react'
 import { Button, Dialog, Empty, Field, Head, Notice, Panel, Pill, SearchBox, StatGrid, Tabs, day, formValues, money, useAction } from './ui'
 import type { Row, ViewProps } from './ui'
 
 const taskStates=['To Do','In Progress','Blocked','Review','Completed']
 export function Tasks({data,act}:ViewProps){
-  const [view,setView]=useState('List'),[query,setQuery]=useState(''),[filter,setFilter]=useState('All statuses'),[edit,setEdit]=useState<Row|null>(null)
+  const [view,setView]=useState('Board'),[query,setQuery]=useState(''),[filter,setFilter]=useState('All statuses'),[edit,setEdit]=useState<Row|null>(null)
   const tasks:Row[]=data.tasks
   const selected=tasks.filter(t=>(filter==='All statuses'||t.status===filter)&&[t.title,t.department,t.owner].join(' ').toLowerCase().includes(query.toLowerCase()))
   const state=useAction(act)
   return <><Head title="Tasks & timeline" sub="Coordinate owners, deadlines and the work that depends on them." action={<Button primary onClick={()=>setEdit({})}><Plus/> Add task</Button>}/>
     <StatGrid items={[{label:'Total tasks',value:tasks.length},{label:'In progress',value:tasks.filter(t=>t.status==='In Progress').length,tone:'purple'},{label:'Completed',value:data.metrics.completed,tone:'mint'},{label:'Overdue',value:data.metrics.overdue,tone:data.metrics.overdue?'amber':undefined}]}/>
     <div className="m-toolrow"><Tabs options={['List','Board','Timeline']} current={view} onChange={setView}/><div className="m-actions" style={{margin:0}}><SearchBox value={query} onChange={setQuery} placeholder="Find a task or owner"/><select className="m-select" value={filter} onChange={e=>setFilter(e.target.value)} aria-label="Filter task status">{['All statuses',...taskStates].map(x=><option key={x}>{x}</option>)}</select></div></div><Notice state={state}/>
-    {!selected.length ? <Panel><Empty title="No matching tasks" detail="Change the filters or add a task."/></Panel> : view==='Board'?<div className="m-board">{taskStates.map(status=><section className="m-column" key={status}><div className="m-columnhead"><i className="m-dot"/>{status}<b>{selected.filter(t=>t.status===status).length}</b></div>{selected.filter(t=>t.status===status).map(t=><button className="m-item" key={t.id} onClick={()=>setEdit(t)}><strong>{t.title}</strong><small>{t.owner||'Unassigned'} · {day(t.due_date)}</small><Pill>{t.priority}</Pill></button>)}</section>)}</div>:
+    {!selected.length ? <Panel><Empty title="No matching tasks" detail="Change the filters or add a task."/></Panel> : view==='Board'?<TaskBoard tasks={selected} filter={filter} onEdit={setEdit}/>:
       view==='Timeline'?<Panel title="Task deadlines">{[...new Set(selected.map(t=>t.due_date))].sort().map(d=><div className="m-row" key={d}><span className="m-symbol"><CalendarDays size={17}/></span><div className="m-rowbody"><strong>{day(d,true)}</strong><div className="m-actions">{selected.filter(t=>t.due_date===d).map(t=><Button key={t.id} onClick={()=>setEdit(t)}>{t.title}</Button>)}</div></div></div>)}</Panel>:
       <Panel title="Task list" action={<span className="m-sub">{selected.length} tasks</span>}><div className="m-tablewrap"><table className="m-table"><thead><tr><th>Task</th><th>Owner</th><th>Due</th><th>Priority</th><th>Status</th></tr></thead><tbody>{selected.map(t=><tr key={t.id}><td><button className="m-plain" onClick={()=>setEdit(t)}>{t.title}</button><small>{t.department}{t.agent?' · '+t.agent:''}</small></td><td>{t.owner||'Unassigned'}</td><td>{day(t.due_date)}</td><td><Pill>{t.priority}</Pill></td><td><Pill>{t.status}</Pill></td></tr>)}</tbody></table></div></Panel>}
     {edit&&<TaskForm key={edit.id||'new'} task={edit} data={data} act={act} onClose={()=>setEdit(null)}/>}
   </>
 }
+const laneIcons = [ListChecks, Clock3, CircleAlert, ClipboardCheck, Check]
+
+function TaskBoard({tasks,filter,onEdit}:{tasks:Row[];filter:string;onEdit:(task:Row)=>void}){
+  return <Panel title="Event work board" action={<span className="m-sub">{tasks.length} tasks</span>}>
+    <div className="m-board m-task-board" aria-label="Task status lanes" role="region" tabIndex={0}>
+      {taskStates.map((status,index)=>{
+        if(filter!=='All statuses'&&filter!==status)return null
+        const Icon=laneIcons[index]
+        const items=tasks.filter(task=>task.status===status)
+        return <section className="m-column" key={status}>
+          <h3 className="m-columnhead"><Icon size={16} aria-hidden="true"/>{status}<b>{items.length}</b></h3>
+          {items.map(task=><button className="m-item" key={task.id} onClick={()=>onEdit(task)}>
+            <strong>{task.title}</strong>
+            {task.description&&<small className="m-task-description">{task.description}</small>}
+            <span className="m-task-meta"><small>{task.owner||'Unassigned'}</small><small>{day(task.due_date)}</small></span>
+            <Pill>{task.priority}</Pill>
+          </button>)}
+        </section>
+      })}
+    </div>
+  </Panel>
+}
+
 function TaskForm({task:t,data,act,onClose}:Pick<ViewProps,'data'|'act'>&{task:Row,onClose:()=>void}){
   const state=useAction(act), [delay,setDelay]=useState(false)
   const members:Row[]=data.members,tasks:Row[]=data.tasks

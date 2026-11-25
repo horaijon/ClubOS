@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { Activity, ArrowRight, Bell, Bot, Building2, CalendarDays, ChartNoAxesCombined, Check, ChevronDown, ChevronRight, ChevronsUpDown, CircleAlert, ClipboardCheck, Command, FlaskConical, FolderKanban, Handshake, LayoutDashboard, ListChecks, LoaderCircle, Menu, MessageSquare, PanelLeftClose, Plus, RadioTower, Search, Settings2, ShieldAlert, Sparkles, Users, Wallet, X, type LucideIcon } from 'lucide-react';
+import { Activity, ArrowRight, Bell, Bot, Building2, CalendarDays, ChartNoAxesCombined, Check, ChevronDown, ChevronRight, ChevronsUpDown, CircleAlert, ClipboardCheck, Command, FlaskConical, FolderKanban, Handshake, LayoutDashboard, ListChecks, LoaderCircle, Menu, MessageSquare, PanelLeftClose, Plus, RadioTower, Search, Settings2, ShieldAlert, Sparkles, TrendingUp, Users, Wallet, X, type LucideIcon } from 'lucide-react';
 import { LogoMark } from './Identity';
 import { Dialog } from './Dialog';
 import Dashboard from './Dashboard';
@@ -9,7 +9,7 @@ import { api, save, saved, type AuthSession, type EventOption, type Snapshot } f
 const Modules=lazy(()=>import('./Modules'));
 type Nav=[string,string,LucideIcon];
 const groups:{name:string;items:Nav[]}[]=[
- {name:'Workspace',items:[['dashboard','Overview',LayoutDashboard],['events','Events',CalendarDays],['agents','AI agents',Bot]]},
+ {name:'Workspace',items:[['dashboard','Overview',LayoutDashboard],['trends','Event trends',TrendingUp],['events','Events',CalendarDays],['agents','AI agents',Bot]]},
  {name:'Event management',items:[['sponsors','Sponsorships',Handshake],['finance','Finance',Wallet],['tasks','Tasks & timeline',ListChecks],['marketing','Marketing',RadioTower],['operations','Participants',Users]]},
  {name:'Oversight',items:[['risks','Risks & recovery',ShieldAlert],['approvals','Approvals',ClipboardCheck],['reports','Reports',ChartNoAxesCombined]]},
 ];
@@ -65,10 +65,10 @@ export default function App({session,onExit,exitPending,sessionError}:{
  <div className="shell-main" inert={mobile||undefined}>
   <header className="topbar glass"><button ref={menuTrigger} className="mobile-menu icon-button" aria-label="Open navigation" onClick={()=>setMobile(true)}><Menu size={20}/></button>
   <div className="breadcrumb"><button onClick={()=>open('events')} aria-label="Switch event"><FolderKanban size={15}/><span>{data?.event.name||'Events'}</span><ChevronDown size={12}/></button><span className="crumb-divider">/</span><span>{name}</span></div>
-  <div className="top-actions"><button className="search-btn" aria-label="Search workspace" onClick={()=>open('search')}><Search size={16}/><span>Search</span><kbd>⌘ K</kbd></button><button className="notifications icon-button" aria-label="Notifications" onClick={()=>open('notifications')}><Bell size={17}/>{(data?.metrics.pending_approvals||data?.metrics.active_risks)?<i/>:null}</button><span className="toolbar-divider"/><button className="copilot-btn" onClick={()=>navigate('copilot')}><Sparkles size={15}/><span>AI Copilot</span></button></div></header>
+  <button className="search-btn command-search" aria-label="Search workspace" onClick={()=>open('search')}><Search size={17}/><span>Search tasks, sponsors, and risks</span><kbd>⌘ K</kbd></button><div className="top-actions"><button className="notifications icon-button" aria-label="Notifications" onClick={()=>open('notifications')}><Bell size={17}/>{(data?.metrics.pending_approvals||data?.metrics.active_risks)?<i/>:null}</button><span className="toolbar-divider"/><button className="copilot-btn" onClick={()=>navigate('copilot')}><Sparkles size={15}/><span>AI Copilot</span></button></div></header>
    <main className="main-content" id="main-content" tabIndex={-1}>
    {(error||sessionError)&&<div className="error-banner" role="alert"><CircleAlert size={17}/>{error||sessionError}{error&&<button onClick={()=>setRetry(n=>n+1)}>Retry</button>}</div>}
-   {page==='events'?<><div className="page-intro"><div><h1>Events</h1><p>Select an event or launch a new plan.</p></div><button className="brand-button" onClick={()=>open('wizard')}><Plus size={15}/>Create event</button></div>{chooseEvents}</>:data?(page==='dashboard'?<Dashboard data={data} navigate={navigate}/>:<Suspense fallback={<div className="shell-loading" role="status">Opening {name}…</div>}><Modules key={id+page} page={page} data={data} navigate={navigate} act={act} refresh={refresh}/></Suspense>):booting||id&&!error?<div className="shell-loading" role="status"><LoaderCircle className="spin" size={20}/>Opening workspace…</div>:!error?<section className="workspace-empty">
+   {page==='events'?<><div className="page-intro"><div><h1>Events</h1><p>Select an event or launch a new plan.</p></div><button className="brand-button" onClick={()=>open('wizard')}><Plus size={15}/>Create event</button></div>{chooseEvents}</>:data?((page==='dashboard'||page==='trends')?<Dashboard data={data} navigate={navigate} view={page==='trends'?'trends':'overview'}/>:<Suspense fallback={<div className="shell-loading" role="status">Opening {name}…</div>}><Modules key={id+page} page={page} data={data} navigate={navigate} act={act} refresh={refresh}/></Suspense>):booting||id&&!error?<div className="shell-loading" role="status"><LoaderCircle className="spin" size={20}/>Opening workspace…</div>:!error?<section className="workspace-empty">
      <span className="workspace-empty-icon"><CalendarDays size={24} strokeWidth={1.6}/></span>
      <h1>Your next event starts here</h1>
      <p>{accountClub.name} is ready. Add your first event to plan its budget, assign tasks, and track sponsorships.</p>
