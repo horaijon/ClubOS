@@ -11,13 +11,13 @@ from uuid import UUID, NAMESPACE_URL, uuid4, uuid5
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, File, Header, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
-from . import api, auth, db, engine, trace
+from . import api, auth, db, engine, trace, registration
 from .seed import CLUB
 from .reports import event_report
 
@@ -63,9 +63,14 @@ async def lifespan(app):
 
 
 app = FastAPI(title="ClubOS",version="1.0",lifespan=lifespan)
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost","127.0.0.1","testserver"])
+from urllib.parse import urlsplit
+public_host=urlsplit(os.getenv("CLUBOS_PUBLIC_URL","")).hostname
+allowed_hosts=["localhost","127.0.0.1","testserver"]
+if public_host:allowed_hosts.append(public_host)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 app.include_router(auth.router)
 app.include_router(api.router)
+app.include_router(registration.router)
 
 
 @app.middleware("http")
@@ -181,4 +186,8 @@ def agreement_text(event_id: str,club: auth.Workspace,file: UploadFile=File(...)
 
 dist = ROOT / "frontend" / "dist"
 if dist.is_dir():
+    @app.get("/register/{slug}", include_in_schema=False)
+    def registration_page(slug: str):
+        return FileResponse(dist / "index.html")
+
     app.mount("/",StaticFiles(directory=dist,html=True),name="workspace")

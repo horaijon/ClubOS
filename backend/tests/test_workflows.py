@@ -247,3 +247,51 @@ def test_provider_failure_uses_local_drafts_for_rest_of_recovery(workspace, monk
     assert attempts == ["Magnet"]
     proposal = next(a for a in event.snapshot()["approvals"] if a["id"] == result["approval_id"])
     assert len([a for a in proposal["actions"] if a["type"] == "backup_outreach" and a["text"]]) == 2
+
+
+def test_prompt_launch_registration_and_simulated_sponsor_lifecycle(workspace):
+    from datetime import date, timedelta
+    from clubos import trace
+    from clubos.seed import CLUB
+
+    start = date.today() + timedelta(days=18)
+    reg = start - timedelta(days=5)
+    job = workspace.post('/api/planning-jobs', json={
+        'name': 'HackBlitz', 'start_date': str(start), 'end_date': str(start + timedelta(days=1)),
+        'initial_budget': 1_500_000, 'target': 150,
+        'brief': f'AI hackathon for teams of 2 to 4. Add a track and GitHub link. Registration closes {reg}. The total budget is ₹60,000.',
+    }).json()['job_id']
+    status = workspace.get(f'/api/jobs/{job}').json()
+    assert status['status'] == 'completed'
+    event = Event(workspace, status['id'])
+    initial = event.snapshot()
+    form = initial['registration_form']
+    assert form['deadline'] == str(reg)
+    assert {'track','github','team_size'} <= {f['key'] for f in form['fields']}
+    assert initial['metrics']['planned'] == 6_000_000
+    assert initial['event']['sponsorship_target'] == 4_500_000
+    assert len(initial['tasks']) == len(initial['milestones']) == 8
+    assert {s['agent_name'] for s in trace.entries(CLUB,'trace_id',job)} == {'Nexus','FormFlow','OpsLedger','Magnet'}
+    public_url = '/api/registration/' + form['slug']
+    assert workspace.get(public_url+'/qr.svg').headers['content-type'].startswith('image/svg+xml')
+    with TestClient(app) as visitor:
+        public = visitor.get(public_url).json()
+        assert 'event_id' not in public and 'participants' not in public
+        result = visitor.post(public_url, json={'name':'Ananya Das','email':'ananya@example.test','answers':{'track':'AI'}})
+        assert result.status_code == 201, result.text
+        assert visitor.get(event.url).status_code == 401
+    after = event.snapshot()
+    assert after['metrics']['registered'] == 1
+    assert after['participants'][0]['answers'] == {'track':'AI'}
+    pending = event.action('prepare_outreach')
+    event.action('approve', {'approval_id':pending['approval_id']})
+    partner = next(s for s in event.snapshot()['sponsors'] if s['stage']=='Contacted')
+    offer = event.action('simulate_reply',{'sponsor_id':partner['id']})
+    assert event.snapshot()['metrics']['committed'] == 0
+    event.action('approve',{'approval_id':offer['approval_id']})
+    final = event.snapshot()
+    assert final['metrics']['committed'] > 0
+    assert len([t for t in final['tasks'] if t['sponsor_id']==partner['id']]) == 2
+    recovery = event.action('simulate_dropout')
+    assert recovery['approval_id']
+    assert event.snapshot()['metrics']['committed'] == 0

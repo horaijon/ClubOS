@@ -79,11 +79,12 @@ def transaction(write=False):
 
 def init_db():
     from .seed import bootstrap
+    from .registration import SCHEMA as REGISTRATION_SCHEMA
     c = connect()
     try:
         c.execute('PRAGMA journal_mode=WAL')
-        c.executescript(SCHEMA)
-        for table,column,kind in [('tasks','completed_at','TEXT'),('approvals','basis_balance','INTEGER')]:
+        c.executescript(SCHEMA + REGISTRATION_SCHEMA)
+        for table,column,kind in [('clubs','available_funds','INTEGER NOT NULL DEFAULT 0'),('tasks','completed_at','TEXT'),('approvals','basis_balance','INTEGER')]:
             if column not in {row['name'] for row in c.execute(f'PRAGMA table_info({table})')}:
                 c.execute(f'ALTER TABLE {table} ADD COLUMN {column} {kind}')
     finally:

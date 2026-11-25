@@ -145,6 +145,38 @@ def copilot(f,p):
     ts=task_rows(f.c,f.id)
     f.log('Nexus','query_event_state',f'Loaded event funding, open work and risks for {f.e["name"]}.')
     context={'question':q}
+    extension=re.search(r'extend (?:the )?registration deadline by (\d+) days?',lower)
+    if extension:
+        from .registration import form_for_event, publish
+        form=form_for_event(f.c,f.id)
+        if not form:raise Conflict('Publish the registration form first.')
+        old=iso(form['deadline'])
+        new=old+timedelta(days=number(int(extension[1]),'Days',1,90))
+        if new>iso(f.e['start_date']):raise Invalid('Registration must close by the event start date.')
+        with f.tool('FormFlow','publish_registration',{'previous_deadline':old.isoformat()}) as step:
+            publish(f.c,f.id,new.isoformat(),[field['key'] for field in form['fields']])
+            f.c.execute("UPDATE events SET milestone_date=? WHERE id=?",(new.isoformat(),f.id))
+            for table in ('tasks','milestones'):
+                f.c.execute(f"UPDATE {table} SET due_date=? WHERE event_id=? AND title='Close registrations and confirm roster'",
+                            (new.isoformat(),f.id))
+            f.c.execute("UPDATE tasks SET due_date=MAX(due_date,?) WHERE event_id=? AND title='Brief volunteers and confirm vendors'",
+                        (new.isoformat(),f.id))
+            f.c.execute("UPDATE milestones SET due_date=MAX(due_date,?) WHERE event_id=? AND title='Brief volunteers and confirm vendors'",
+                        (new.isoformat(),f.id))
+            step.update(summary=f'Extended registration to {new}.',output={'deadline':new.isoformat()})
+        text=f'Registration now closes on {new}.'
+        if 'sponsor' in lower:
+            from .sponsorship import add_prospect,draft
+            used={row[0] for row in f.c.execute('SELECT prospect_id FROM sponsors WHERE event_id=?',(f.id,))}
+            candidates=[entry for entry in prospects(f.c,f.e) if entry['id'] not in used]
+            if 'food' in lower:
+                candidates.sort(key=lambda entry:not re.search('food|beverage|coffee|snack|cater',entry['industry'],re.I))
+            if candidates:
+                partner=candidates[0]
+                selected=add_prospect(f,{'prospect_id':partner['id']})
+                draft(f,selected,'outreach')
+                text+=f' Magnet drafted a pitch for {partner["name"]}.'
+        return dict(message=text,text=text)
     if re.search(r'follow.up',lower):
         from .sponsorship import draft
         selected=rows(f.c,"""SELECT s.id,p.name FROM sponsors s JOIN profiles p ON p.id=s.prospect_id

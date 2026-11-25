@@ -6,7 +6,7 @@ import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import Field, BaseModel, ConfigDict, StringConstraints
 
 from . import db
 from .seed import CLUB
@@ -34,6 +34,7 @@ class ClubDetails(BaseModel):
     name: Name
     college: Name
     role: Name = "Organizer"
+    available_funds: int = Field(default=0,ge=0,le=100_000_000_000)
 
 
 def hash_password(password, salt):
@@ -49,7 +50,7 @@ def session(conn, request):
     if not token or len(token) > 80:
         return None
     row = conn.execute(
-        """SELECT s.demo, a.id account_id, a.name, a.email, c.id club_id, c.name club_name, c.college,
+        """SELECT s.demo, a.id account_id, a.name, a.email, c.id club_id, c.name club_name, c.college, c.available_funds,
         (SELECT role FROM members WHERE club_id=c.id ORDER BY rowid LIMIT 1) role
         FROM sessions s
         LEFT JOIN accounts a ON a.id=s.account_id
@@ -65,7 +66,7 @@ def session(conn, request):
         "email": row["email"],
         "role": row["role"] or "Organizer",
         "demo": bool(row["demo"]),
-        "club": {"id": row["club_id"], "name": row["club_name"], "college": row["college"]} if row["club_id"] else None,
+        "club": {"id": row["club_id"], "name": row["club_name"], "college": row["college"], "available_funds": row["available_funds"]} if row["club_id"] else None,
     }
 
 
@@ -159,7 +160,7 @@ def create_club(data: ClubDetails, current: Annotated[dict, Depends(account)]):
         row = conn.execute("SELECT club_id FROM accounts WHERE id=?", (current["account_id"],)).fetchone()
         if row["club_id"]:
             raise HTTPException(409, "Your account already has a club workspace.")
-        club_id = db.insert(conn, "clubs", name=data.name, college=data.college)
+        club_id = db.insert(conn, "clubs", name=data.name, college=data.college, available_funds=data.available_funds)
         db.insert(conn, "members", club_id=club_id, name=current["name"], role=data.role, department="Planning")
         conn.execute("UPDATE accounts SET club_id=? WHERE id=?", (club_id, current["account_id"]))
     return {"id": club_id, "name": data.name, "college": data.college}

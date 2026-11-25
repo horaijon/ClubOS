@@ -18,4 +18,4 @@ if [ ! -f frontend/dist/index.html ]; then
     fi
   )
 fi
-exec .venv/bin/uvicorn clubos.main:app --app-dir backend --host 127.0.0.1 --port "${PORT:-8017}"
+exec .venv/bin/uvicorn clubos.main:app --app-dir backend --host "${CLUBOS_HOST:-127.0.0.1}" --port "${PORT:-8017}"

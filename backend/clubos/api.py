@@ -26,6 +26,8 @@ class EventCreate(BaseModel):
     goals:str=Field(default='',max_length=2500)
     requirements:str=Field(default='',max_length=2500)
     constraints:str=Field(default='',max_length=2500)
+    brief:str=Field(default='',max_length=6500)
+    estimated_budget:Money|None=None
     members:list[Name]=Field(default_factory=list,max_length=100)
 
     @model_validator(mode='after')

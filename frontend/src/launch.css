@@ -1,0 +1,17 @@
+.public-registration { min-height:100dvh; display:grid; place-items:center; padding:24px; }
+.public-form { width:min(100%, 34rem); padding:clamp(20px,5vw,38px); border-radius:22px; }
+.public-form h1 { font-size:clamp(2rem,6vw,3rem); margin:20px 0 8px; }
+.public-form p { color:var(--muted); }
+.public-fields { display:grid; gap:14px; margin-top:22px; }
+.public-fields label { display:grid; gap:6px; font-weight:650; }
+.public-fields input { width:100%; background:var(--surface); border:1px solid var(--line); border-radius:9px; padding:10px 12px; }
+.launch-tools { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.mission-outcomes { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-bottom:18px; }
+.mission-outcomes .m-card { min-width:0; margin:0; }
+.mission-feed { display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); align-items:start; gap:14px; }
+.mission-feed .m-panel { min-width:0; }
+.registration-link { display:block; overflow-wrap:anywhere; font-size:.83rem; }
+.registration-qr { display:block; width:190px; max-width:100%; margin:10px auto; background:white; border-radius:12px; }
+.milestone-list { list-style:none; padding:0; margin:0; }
+.milestone-list li { padding:10px 0; border-bottom:1px solid var(--line); }
+@media(max-width:900px) { .mission-outcomes,.mission-feed {grid-template-columns:1fr;} }

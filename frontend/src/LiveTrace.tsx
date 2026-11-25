@@ -62,8 +62,8 @@ export function useLiveTrace(url: string, onCommit?: () => void, finite = false)
   return feed.url === url ? feed : {steps: [], connected: false}
 }
 
-export function TraceView({steps, connected, requestId, compact = false}: {
-  steps: TraceStep[]; connected?: boolean; requestId?: string; compact?: boolean
+export function TraceView({steps, connected, requestId, compact = false, plain = false}: {
+  steps: TraceStep[]; connected?: boolean; requestId?: string; compact?: boolean; plain?: boolean
 }) {
   const [selected, setSelected] = useState('')
   const list=useRef<HTMLOListElement>(null)
@@ -107,8 +107,8 @@ export function TraceView({steps, connected, requestId, compact = false}: {
         {step.kind==='handoff'?<GitBranch size={16}/>:step.kind==='tool_called'?<LoaderCircle size={16} className="spin"/>:<AgentMark name={step.agent_name}/>}
         <div className="trace-body"><strong>{step.kind==='handoff'?'Nexus → '+step.agent_name:step.tool_name?step.agent_name+' · '+readable(step.tool_name):readable(step.kind)}</strong>
           <p>{step.reasoning_summary}</p>
-          {step.kind==='tool_finished'&&<details><summary>Tool details{step.latency_ms!==null?` · ${step.latency_ms} ms`:''}</summary>
-            <div className="trace-payload"><span>Run {step.run_id}{step.parent_run_id&&<> · Parent {step.parent_run_id}</>}</span><br/><span>Input</span><pre>{JSON.stringify(call?.input_payload||{},null,2)}</pre>
+          {step.kind==='tool_finished'&&(!plain||Object.keys(step.output_payload).length>0)&&<details><summary>Tool details{!plain&&step.latency_ms!==null?` · ${step.latency_ms} ms`:''}</summary>
+            <div className="trace-payload">{!plain&&<><span>Run {step.run_id}{step.parent_run_id&&<> · Parent {step.parent_run_id}</>}</span><br/><span>Input</span><pre>{JSON.stringify(call?.input_payload||{},null,2)}</pre></>}
               <span>Output</span><pre>{JSON.stringify(step.output_payload,null,2)}</pre></div>
           </details>}
         </div>

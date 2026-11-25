@@ -1,3 +1,4 @@
+import { Registrations } from './MissionControl'
 import Sponsors from './modules/Sponsors'
 import { Tasks, Finance } from './modules/Work'
 import { Approvals, Agents, Risks } from './modules/Recovery'
@@ -19,8 +20,8 @@ function Governance(props:ViewProps){
     <div className="orchestration-tabs"><Tabs options={['Approvals','Risk register']} current={view} onChange={setView}/></div>
     {view==='Approvals'?<Approvals {...props} embedded/>:<Risks {...props} embedded/>}</>
 }
-const views:Record<string,ComponentType<ViewProps>>={
-  sponsors:Sponsors,finance:Finance,tasks:TasksOps,marketing:Marketing,operations:Operations,
+const views:Record<string,ComponentType<ModuleProps>>={
+  registrations:Registrations,sponsors:Sponsors,finance:Finance,tasks:TasksOps,marketing:Marketing,operations:Operations,
   risks:Risks,approvals:Governance,agents:Agents,reports:Reports,copilot:Copilot,'copilot-drawer':props=><Copilot {...props} embedded/>,workspace:Workspace,
 }
 export default function Modules(props:ModuleProps) {

@@ -32,6 +32,7 @@ function AccountForm({view,onSubmit,busy,error,session}:{
           {setup ? <>
             <label>Club name<input name="name" autoComplete="organization" maxLength={120} required placeholder="e.g. Robotics Society"/></label>
             <label>College or institution<input name="college" maxLength={120} required placeholder="e.g. Ramaiah Institute of Technology"/></label>
+            <label>Available club funds (₹)<input name="available_funds" type="number" min="0" step=".01" defaultValue="0" required/></label>
             <label>Your role<input name="role" autoComplete="organization-title" maxLength={120} defaultValue="Organizer" required/></label>
           </> : <>
             {signup&&<label>Full name<input name="name" autoComplete="name" maxLength={120} required/></label>}
@@ -108,7 +109,7 @@ export default function Entry(){
     const form=Object.fromEntries(new FormData(event.currentTarget))
     setBusy(true);setError('')
     try{
-      const current=await send(view==='setup'?'club':view,form)
+      const current=await send(view==='setup'?'club':view,view==='setup'?{...form,available_funds:Math.round(Number(form.available_funds)*100)}:form)
       go(current?.club?'dashboard':'setup')
     }catch(err){setError((err as Error).message)}
     finally{setBusy(false)}

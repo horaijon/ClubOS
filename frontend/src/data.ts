@@ -4,7 +4,7 @@ export interface AuthSession {
  email: string|null;
  role: string;
  demo: boolean;
- club: {id:string;name:string;college:string}|null;
+ club: {id:string;name:string;college:string;available_funds:number}|null;
 }
 export interface EventRecord {
   id: string; name: string; type: string; description: string; venue: string; start_date: string; end_date: string;
@@ -17,7 +17,9 @@ export interface Metrics {
 }
 export interface Task { id: string; title: string; description: string; department: string; owner: string; status: string; priority: string; due_date: string; }
 export interface Run {id:string; agent:string; trigger:string; summary:string; mode:string; status:string; created_at:string; workflow_id:string;}
+export interface RegistrationForm {slug:string;deadline:string;public_url?:string;fields:{key:string;label:string}[]}
 export interface Snapshot {
+ registration_form: RegistrationForm|null;
  event: EventRecord; metrics: Metrics; tasks: Task[]; sponsors: {id:string;name:string;stage:string}[];
  budget:{id:string;category:string;planned:number;actual:number}[]; risks:{id:string;title:string;severity:string;status:string}[];
  approvals:{id:string;title:string;status:string}[]; runs: Run[]; marketing: unknown[];

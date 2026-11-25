@@ -78,7 +78,7 @@ def structured(agent, payload, schema, fallback):
         prompt = json.dumps(payload, ensure_ascii=False, default=str)[:26000]
         prompt = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "[email omitted]", prompt)
         response = _client().models.generate_content(
-            model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash"), contents=prompt,
+            model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"), contents=prompt,
             config=types.GenerateContentConfig(system_instruction=ROLES[agent] + POLICY,
                 response_mime_type="application/json", response_schema=schema, temperature=0.25))
         return schema.model_validate_json(response.text), "Gemini", ""

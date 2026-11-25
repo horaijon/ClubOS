@@ -14,6 +14,8 @@ from .seed import DEMO,seed_event
 def create(c,data,club_id,execution=None):
     eid=uid()
     if iso(data['start_date'])>iso(data['end_date']):raise Invalid('Event end date must be on or after the start.')
+    brief=data.pop('brief','')
+    budget=data.pop('estimated_budget',None)
     chosen=data.pop('members',[])
     if 'constraints' in data:data['constraints_text']=data.pop('constraints')
     insert(c,'events',id=eid,club_id=club_id,registration_milestone=max(1,data['target']//2),milestone_date=min(iso(data['start_date']),max(date.today(),iso(data['start_date'])-timedelta(days=7))).isoformat(),created_at=now(),**data)
@@ -28,7 +30,21 @@ def create(c,data,club_id,execution=None):
     c.executemany('INSERT INTO team VALUES (?,?)',[(eid,k) for k in ids])
     wid=insert(c,'workflows',event_id=eid,trigger='Event created',request_id='initial-plan',input_hash='plan',result='{}',created_at=now())
     if execution: execution.attach_event(eid)
-    generate(Flow(c,get_event(c,eid),wid,'Event created',execution=execution))
+    flow=Flow(c,get_event(c,eid),wid,'Event created',execution=execution)
+    if brief:
+        from . import launch
+        with flow.tool('Nexus','decode_brief',{'event_name':data['name']}) as step:
+            plan,mode,detail=launch.interpret(data,brief,budget)
+            gap=plan.estimated_budget-data['initial_budget']
+            c.execute('UPDATE events SET sponsorship_target=?,goals=?,milestone_date=? WHERE id=?',
+                      (gap,brief,plan.registration_deadline.isoformat(),eid))
+            step.update(summary=f'Understood the event brief. Sponsorship target is {recovery.currency(gap)}.',mode=mode,
+                        output={**plan.model_dump(mode='json'),'sponsorship_gap':gap,'club_funds':data['initial_budget']})
+        flow.e=get_event(c,eid)
+        if mode=='Deterministic fallback':flow.provider_detail=detail
+        launch.build(flow,plan)
+    else:
+        generate(flow)
     return dict(id=eid)
 
 def due_items(c,e):
@@ -154,6 +170,33 @@ def route(f,k,p):
         return dict(message=f'{agent} check complete.',**result)
     if k=='withdraw':return crm.withdraw(f,p)
     if k=='add_prospect':return crm.add_prospect(f,p)
+    if k=='prepare_outreach':
+        selected=[s for s in workspace(c,f.id)['sponsors'] if s['stage']=='Outreach Drafted' and s['draft']]
+        if not selected:raise Conflict('There are no sponsor pitches ready for dispatch.')
+        actions=[dict(type='dispatch_simulated_pitch',title=f'Contact {s["name"]} in the simulation',sponsor_id=s['id']) for s in selected]
+        key=f.approval(f'Contact {len(selected)} shortlisted sponsors', 'Dispatch the selected drafts within the ClubOS sponsorship simulation.',actions)
+        return dict(message='Sponsor outreach is ready for approval.',approval_id=key)
+    if k=='simulate_dropout':
+        partner=c.execute("""SELECT s.id FROM sponsors s WHERE s.event_id=? AND s.stage='Confirmed'
+            AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.sponsor_id=s.id)
+            AND EXISTS (SELECT 1 FROM communications cm WHERE cm.sponsor_id=s.id AND cm.kind='simulation_reply')
+            ORDER BY s.committed DESC,s.id LIMIT 1""",(f.id,)).fetchone()
+        if not partner:raise Conflict('Confirm a simulated sponsor offer first.')
+        return crm.withdraw(f,{'sponsor_id':partner[0]})
+    if k=='simulate_reply':
+        partner=crm.sponsor(f,p.get('sponsor_id'))
+        if partner['stage']!='Contacted':raise Conflict('Dispatch the simulated pitch first.')
+        gap=funding(c,f.e)['shortfall']
+        amount=max(100_000,min(2_000_000,gap or f.e['sponsorship_target']//4))
+        reply=f'We are interested in {f.e["name"]} and can offer {recovery.currency(amount)} for logo placement and a partner booth.'
+        outcome=f.consult('Magnet','extract_terms',dict(simulated_reply=reply,amount_paise=amount),
+                          f'Thank you for offering {recovery.currency(amount)}. Our organizer will review the proposed logo and booth placement.')
+        c.execute("UPDATE sponsors SET stage='Responded',follow_up_date=NULL WHERE id=?",(partner['id'],))
+        insert(c,'communications',event_id=f.id,sponsor_id=partner['id'],kind='simulation_reply',text=reply,created_at=now())
+        aid=f.approval(f'Review simulated offer from {partner["name"]}',reply+' '+outcome['text'],[
+            dict(type='confirm',title=f'Confirm {recovery.currency(amount)} simulated commitment',sponsor_id=partner['id'],
+                 amount=amount,before_stage='Responded',before_amount=partner['committed'])])
+        return dict(message='Simulated response received. Review the proposed commitment.',approval_id=aid)
     if k=='sponsor_stage':return crm.stage(f,p)
     if k in ('outreach','proposal','followup'):return crm.draft(f,p,k)
     if k in ('analyze_response','analyze_agreement'):return crm.terms(f,p,k.split('_')[1])

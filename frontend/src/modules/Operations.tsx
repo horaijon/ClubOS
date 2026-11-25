@@ -5,6 +5,7 @@ import { Button, CopyButton, Dialog, Empty, Field, Head, Notice, Panel, Pill, Se
 import type { Row, ViewProps } from './ui'
 import ImportCsv from './ImportCsv'
 import { TraceView } from '../LiveTrace'
+import { useDictation } from '../useDictation'
 
 export function Operations({data,act,navigate,embedded}:ViewProps & {embedded?:boolean}){
   const [create,setCreate]=useState(false),[importing,setImporting]=useState(false),[query,setQuery]=useState(''),[view,setView]=useState('Participants')
@@ -37,11 +38,12 @@ export function Marketing({data,act,embedded}:ViewProps & {embedded?:boolean}){
 
 export function Copilot({data,act,navigate,trace,traceConnected,traceRequest,embedded}:ViewProps & {embedded?:boolean}){
   const state=useAction(act),[question,setQuestion]=useState(''),[history,setHistory]=useState<Row[]>([])
+  const mic=useDictation()
   const examples=['Follow up with all contacted sponsors who haven’t replied','Cut ₹8,000 without touching prizes','What are our biggest blockers?']
   function ask(q:string){if(!q.trim()||state.busy)return;state.run('copilot',{question:q.trim()},undefined,r=>{setHistory(old=>[...old,{question:q,text:r.text,mode:r.mode,approval:r.approval_id}]);setQuestion('')})}
   const relevant=trace.filter(step=>step.request_id===traceRequest)
   const copilotTrace=relevant.some(step=>step.input_payload.trigger==='copilot')||state.busy
-  return <><Head embedded={embedded} title="AI Copilot" sub={'Ask Nexus about the current event, '+data.event.name+'.'}/><Panel title="Event conversation" action={<AgentMark name="Nexus"/>}><div className="m-pad"><div className="m-chatlog" aria-live="polite">{!history.length&&<><h3>What would you like to check?</h3><div className="m-actions">{examples.map(q=><Button busy={state.busy} key={q} onClick={()=>ask(q)}>{q}</Button>)}</div></>}{history.map((h,i)=><article className="m-turn" key={i}><div><small>You</small><p>{h.question}</p></div><div><small>Nexus · {human(h.mode||'Event data')}</small><p>{h.text}</p>{h.approval&&<Button onClick={()=>navigate('approvals')}>Review proposed actions</Button>}</div></article>)}</div><div className="m-rule"/><Notice state={state}/><form className="m-form" onSubmit={e=>{e.preventDefault();ask(question)}}><Field label="Message"><textarea value={question} onChange={e=>setQuestion(e.target.value)} placeholder="Ask about tasks, sponsorships, funding or recovery…" rows={3} maxLength={2000} required/></Field><div className="m-actions"><Button primary busy={state.busy} disabled={!question.trim()} type="submit"><Send/> Ask Nexus</Button></div></form></div></Panel>{copilotTrace&&<TraceView steps={relevant} connected={traceConnected} requestId={traceRequest} compact/>}</>
+  return <><Head embedded={embedded} title="AI Copilot" sub={'Ask Nexus about the current event, '+data.event.name+'.'}/><Panel title="Event conversation" action={<AgentMark name="Nexus"/>}><div className="m-pad"><div className="m-chatlog" aria-live="polite">{!history.length&&<><h3>What would you like to check?</h3><div className="m-actions">{examples.map(q=><Button busy={state.busy} key={q} onClick={()=>ask(q)}>{q}</Button>)}</div></>}{history.map((h,i)=><article className="m-turn" key={i}><div><small>You</small><p>{h.question}</p></div><div><small>Nexus · {human(h.mode||'Event data')}</small><p>{h.text}</p>{h.approval&&<Button onClick={()=>navigate('approvals')}>Review proposed actions</Button>}</div></article>)}</div><div className="m-rule"/><Notice state={state}/><form className="m-form" onSubmit={e=>{e.preventDefault();ask(question)}}><Field label="Message"><textarea value={question} onChange={e=>setQuestion(e.target.value)} placeholder="Ask about tasks, sponsorships, funding or recovery…" rows={3} maxLength={2000} required/></Field><div className="m-actions"><Button primary busy={state.busy} disabled={!question.trim()} type="submit"><Send/> Ask Nexus</Button>{mic.supported&&<Button onClick={()=>mic.toggle(question,setQuestion)}>{mic.listening?'Stop dictation':'Dictate'}</Button>}</div>{mic.error&&<p role="alert">{mic.error}</p>}</form></div></Panel>{copilotTrace&&<TraceView steps={relevant} connected={traceConnected} requestId={traceRequest} compact plain/>}</>
 }
 
 export function Reports({data}:ViewProps){

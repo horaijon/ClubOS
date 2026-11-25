@@ -22,16 +22,17 @@ CodeStorm starts with INR 20,000 in club funds, INR 45,000 in confirmed sponsors
 
 Use the withdrawal scenario to remove an unpaid INR 20,000 pledge. Ledger calculates the INR 15,000 shortfall. Sentinel flags the risk and Nexus coordinates proposed savings, backup outreach and assigned recovery work. Review or reject the proposal in Approvals. Approved prospective outreach still contributes zero to confirmed funding.
 
-## Workspace
+## Launch an event
 
-- **Command Center** shows the live run, pending approvals, projected funding, and event readiness. Use **Simulate disruption** in CodeStorm to rehearse recovery.
-- **Agent Orchestrator** shows live status, owned tools, recorded runs, manual checks, and expandable workflow steps.
-- **Sponsorships** supports discovery, a staged pipeline, personalized drafts, and agreement review. Confirming a cash sponsor records a receivable, creates linked tasks, and prepares an announcement draft.
-- **Finance & Budget** shows cash, confirmed funding, receivables, and planned versus recorded costs.
-- **Tasks & Ops** combines dependency-linked work, event-day operations, participant check-in, and campaign drafts.
-- **Approvals & Risks** shows the proposed changes and their expected impact. Organizers can edit supported actions, apply the plan, or reject it.
+1. Create an organizer account and save your club, college, and available club funds.
+2. Select **New event**, fill in the quick basics, and type or dictate a single brief. **Try sample brief** fills in a hackathon example.
+3. Watch Nexus interpret the brief, FormFlow publish the registration form, OpsLedger build the budget and milestone timeline, and Magnet draft partner pitches.
+4. Use **Registrations & Form** to edit the form, copy its link, show the QR code, check in participants, or export a CSV. Public submissions update the organizer view live.
+5. Use **Sponsorships** to review simulated outreach. Approve dispatch, simulate a reply, and review the simulated commitment. The workflow stores its activity and drafts locally.
 
-Use **New event** in the header to watch the bootstrap trace. Open **AI Copilot** to draft follow-ups, prepare budget reductions, or explain current blockers.
+Mission Control brings those outcomes together with pending approvals. **Plan & Budget** shows milestones, recorded expenses, and sponsor receivables. The CodeStorm demo also includes sponsor withdrawal and recovery scenarios.
+
+The default registration links work on the computer running ClubOS. To demo across devices on a trusted local network, start ClubOS with `CLUBOS_HOST=0.0.0.0` and `CLUBOS_PUBLIC_URL=http://YOUR_LAN_IP:8017`. Both devices must be able to reach that address. Set an externally reachable HTTPS origin when using a reverse proxy.
 
 ## Optional Gemini
 

@@ -141,7 +141,15 @@ def deadline(flow,d):
 def execute(flow,a,defaults=True):
     c,eid=flow.c,flow.id
     kind=a['type']
-    if kind=='reduce_budget':
+    if kind=='dispatch_simulated_pitch':
+        sponsor=scoped(c,'sponsors',a['sponsor_id'],eid)
+        if sponsor['stage']!='Outreach Drafted' or not sponsor['draft']:
+            raise Conflict('A sponsor pitch has changed since this approval was proposed.')
+        with flow.tool('Magnet','draft_outreach',{'sponsor_id':sponsor['id']}) as step:
+            c.execute("UPDATE sponsors SET stage='Contacted',follow_up_date=NULL WHERE id=?",(sponsor['id'],))
+            insert(c,'communications',event_id=eid,sponsor_id=sponsor['id'],kind='simulation_outreach',text=sponsor['draft'],created_at=now())
+            step.update(summary=a['title'],output={'delivery':'simulated'})
+    elif kind=='reduce_budget':
         b=scoped(c,'budget',a['category_id'],eid)
         spent=c.execute('SELECT COALESCE(SUM(amount),0) FROM expenses WHERE category_id=?',(b['id'],)).fetchone()[0]
         if b['planned']!=a['before'] or a['after']<spent:raise Conflict('An allocation changed. Reject this plan and run a new budget review.')

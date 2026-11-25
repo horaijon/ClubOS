@@ -6,7 +6,9 @@ from .db import encode, insert, now
 from .state import iso, due_in, task, prospects, team, funding
 
 TOOLS = {
-    'Nexus':{'dispatch','consolidate','answer','apply_plan','query_event_state','review_proposal','propose_approval_action'},
+    'FormFlow':{'publish_registration','receive_registration'},
+    'OpsLedger':{'build_event_plan'},
+    'Nexus':{'dispatch','consolidate','answer','apply_plan','query_event_state','review_proposal','propose_approval_action','decode_brief'},
     'Atlas':{'plan_tasks','trace_dependencies','reassign','create_task','revise_deliverables'},
     'Ledger':{'allocate_budget','project_balance','review_terms','record_payment','create_sponsor_receivable','update_budget_allocation','record_expense'},
     'Magnet':{'rank_sponsors','draft_outreach','extract_terms','propose_package','follow_up'},

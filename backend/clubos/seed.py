@@ -25,6 +25,11 @@ def bootstrap(c):
     upgrade_demo(c)
     if not c.execute('SELECT 1 FROM events WHERE id=?',(BUILD,)).fetchone():
         seed_build(c)
+    from .registration import form_for_event,publish
+    for eid,fields in ((DEMO,['team_name','team_size','track','github']),(BUILD,['experience','college'])):
+        if not form_for_event(c,eid):
+            event=get_event(c,eid)
+            publish(c,eid,event['start_date'],fields)
 
 def seed_event(c):
     today=date.today()
@@ -56,6 +61,8 @@ def seed_event(c):
     f.note('Sponsor payments reconciled','₹20,000 received from two confirmed fictional partners.','Ledger')
     f.note('Registration milestone reached','136 builders registered toward a target of 200.','Relay')
     upgrade_demo(c)
+    from .registration import publish
+    publish(c,DEMO,day(13),['team_name','team_size','track','github'])
     c.execute("INSERT OR IGNORE INTO receivables SELECT id,? FROM sponsors WHERE event_id=? AND stage='Confirmed'",(day(12),DEMO))
 
 

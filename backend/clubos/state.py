@@ -79,10 +79,12 @@ def budgets(c,eid):
     return rows(c,"""SELECT b.*,COALESCE(SUM(x.amount),0) actual FROM budget b LEFT JOIN expenses x ON x.category_id=b.id
         WHERE b.event_id=? GROUP BY b.id ORDER BY b.planned DESC,b.category""",(eid,))
 
-def prospects(c,event):
+def prospects(c,event,include_directory=False):
     words = set(re.findall(r'[a-z0-9]+',' '.join(str(event[k]).lower() for k in ['type','name','goals','description','college','venue']).replace('hackathons','hackathon')))
     from .seed import CLUB
-    found = rows(c,'SELECT * FROM profiles WHERE event_scope=? OR (event_scope IS NULL AND ?=?)',(event['id'],event['club_id'],CLUB))
+    found = rows(c,'''SELECT * FROM profiles WHERE event_scope=? OR (event_scope IS NULL AND
+        (? OR ?=? OR EXISTS (SELECT 1 FROM registration_forms WHERE event_id=?)))''',
+        (event['id'],include_directory,event['club_id'],CLUB,event['id']))
     for p in found:
         tags=p.pop('tags').split(',')
         matches=[t for t in tags if t in words]
@@ -145,6 +147,12 @@ def workspace(c,eid):
         s['deliverables']=[d for d in deliverables if d['sponsor_id']==s['id']]
     result['sponsors']=sponsors
     result['receivables']=list(receivables.values())
+    from .registration import form_for_event
+    result['registration_form']=form_for_event(c,eid)
+    answers={row['participant_id']:json.loads(row['answers']) for row in rows(c,
+             'SELECT a.* FROM registration_answers a JOIN participants p ON p.id=a.participant_id WHERE p.event_id=?',(eid,))}
+    for participant in result['participants']:
+        participant['answers']=answers.get(participant['id'],{})
     pipeline={s['prospect_id'] for s in sponsors}
     result['prospects']=[p for p in profiles if p['id'] not in pipeline]
     today=date.today().isoformat()

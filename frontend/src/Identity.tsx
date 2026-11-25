@@ -9,6 +9,8 @@ const identities:Record<string,{icon:LucideIcon;color:string;role:string}>={
  echo:{icon:AudioLines,color:'#9a4c22',role:'Marketing'},relay:{icon:Boxes,color:'#176676',role:'Operations'},
  sentinel:{icon:ShieldCheck,color:'#885400',role:'Risk & recovery'}
 };
+identities.formflow={icon:Activity,color:'#197657',role:'Registration'};
+identities.opsledger={icon:Activity,color:'#3154cb',role:'Budget & timeline'};
 export const agentIdentity=(name:string)=>identities[name?.toLowerCase()?.trim()?.split(' ')[0]]??{icon:Activity,color:'#556681',role:'Workflow'};
 export function AgentMark({name}:{name:string}) {const {icon:Icon,color}=agentIdentity(name);return <span className="agent-mark" style={{color,backgroundColor:color+'12',borderColor:color+'28'}}><Icon size={17} strokeWidth={1.65}/></span>}
 export {Command, Feather, Radar, Wallet};
