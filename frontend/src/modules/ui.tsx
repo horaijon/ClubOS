@@ -11,7 +11,7 @@ export interface ModuleProps {
 }
 export type Row = Record<string, any>
 export type ViewProps = Pick<ModuleProps, 'data' | 'act' | 'navigate'>
-export const money = (value: number = 0) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value / 100)
+export { money } from '../data'
 export function day(value?: string, year = false) {
   if (!value) return 'No date'
   const d = new Date(value.length === 10 ? value + 'T12:00:00' : value)
@@ -26,7 +26,7 @@ export function StatGrid({items}:{items: {label:string,value:ReactNode,detail?:R
   return <div className="m-stats">{items.map(item => <div className="m-stat" key={item.label}><span>{item.label}</span><strong className={item.tone ? 'ink-'+item.tone : ''}>{item.value}</strong>{item.detail && <small>{item.detail}</small>}</div>)}</div>
 }
 export function Tabs({options,current,onChange}:{options:string[],current:string,onChange:(val:string)=>void}) {
-  return <div className="m-tabs" aria-label="Views">{options.map(x=><button key={x} type="button" aria-pressed={current===x} onClick={()=>onChange(x)}>{x}</button>)}</div>
+  return <div className="m-tabs" role="group" aria-label="Views">{options.map(x=><button key={x} type="button" aria-pressed={current===x} onClick={()=>onChange(x)}>{x}</button>)}</div>
 }
 export function Pill({children,tone}:{children:ReactNode,tone?:string}) {
   const v=String(children).toLowerCase()
@@ -45,7 +45,13 @@ export function SearchBox({value,onChange,placeholder}:{value:string,onChange:(v
 export function Dialog({title,children,onClose}:{title:string,children:ReactNode,onClose:()=>void}) {
   const ref=useRef<HTMLDialogElement>(null)
   const titleId=useId()
-  useEffect(()=>{const node=ref.current; node?.showModal();return ()=>node?.close()},[])
+  useEffect(()=>{
+    const node=ref.current
+    const previous=document.activeElement as HTMLElement|null
+    node?.showModal()
+    node?.querySelector<HTMLElement>('[data-initial-focus]')?.focus()
+    return ()=>{node?.close();if(previous?.isConnected)previous.focus()}
+  },[])
   return <dialog className="m-dialog m-view" aria-labelledby={titleId} ref={ref} onCancel={e=>{e.preventDefault();onClose()}} onClick={e=>{if(e.target===e.currentTarget)onClose()}}><div className="m-dialoginner"><div className="m-dialoghead"><h2 id={titleId}>{title}</h2><button type="button" className="m-icon" aria-label="Close dialog" onClick={onClose}><X size={18}/></button></div>{children}</div></dialog>
 }
 export function Field({label,children}:{label:string,children:ReactNode}) {
@@ -71,8 +77,8 @@ export function Notice({state}:{state:ActionState}){
   if (!state.error && !state.message) return null
   return <div role={state.error?'alert':'status'} className={'m-notice '+(state.error?'error':'success')}><CheckCircle2 size={16}/>{state.error || state.message}<button onClick={state.clear} aria-label="Dismiss message"><X size={14}/></button></div>
 }
-export function Button({children,onClick,busy=false,primary=false,danger=false,disabled=false,type='button'}:{children:ReactNode,onClick?:()=>void,busy?:boolean,primary?:boolean,danger?:boolean,disabled?:boolean,type?:'submit'|'button'}){
-  return <button type={type} className={'m-btn '+(primary?'primary ': '')+(danger?'danger':'')} disabled={busy||disabled} onClick={onClick}>{busy && <LoaderCircle className="m-spin" size={15}/>} {children}</button>
+export function Button({children,onClick,busy=false,primary=false,danger=false,disabled=false,autoFocus=false,type='button'}:{children:ReactNode,onClick?:()=>void,busy?:boolean,primary?:boolean,danger?:boolean,disabled?:boolean,autoFocus?:boolean,type?:'submit'|'button'}){
+  return <button type={type} data-initial-focus={autoFocus||undefined} className={'m-btn '+(primary?'primary ': '')+(danger?'danger':'')} disabled={busy||disabled} onClick={onClick}>{busy && <LoaderCircle className="m-spin" size={15}/>} {children}</button>
 }
 export function formValues(event: FormEvent<HTMLFormElement>):Row {
   event.preventDefault()

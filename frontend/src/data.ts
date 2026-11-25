@@ -17,7 +17,8 @@ export interface Snapshot {
  registration_history?:{date:string;count:number;cumulative:number}[]; activity:{id:string;title:string;description:string;agent:string;created_at:string}[];
 }
 export type EventOption = Pick<EventRecord,'id'|'name'>;
-export const money = (paise: number) => new Intl.NumberFormat('en-IN', {style:'currency',currency:'INR',maximumFractionDigits:0}).format(paise / 100);
+const currency = new Intl.NumberFormat('en-IN', {style:'currency',currency:'INR',minimumFractionDigits:0,maximumFractionDigits:2});
+export const money = (paise=0) => currency.format(paise / 100);
 export function dateOf(value:string) { return new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? value+'T00:00:00' : value); }
 export function shortDate(value:string, long=false) {
  const date = dateOf(value);

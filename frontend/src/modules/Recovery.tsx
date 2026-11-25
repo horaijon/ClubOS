@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Activity, ArrowRight, Check, ChevronRight, CircuitBoard, FlaskConical, Play, ScanLine, ShieldAlert, ShieldCheck, X } from 'lucide-react'
+import { Activity, ArrowRight, Check, ChevronRight, CircuitBoard, FlaskConical, Play, ScanLine, ShieldAlert, X } from 'lucide-react'
 import { AgentMark, agentIdentity } from '../Identity'
 import { Button, Dialog, Empty, Head, Notice, Panel, Pill, StatGrid, Tabs, day, human, money, useAction } from './ui'
 import type { Row, ViewProps } from './ui'
 import { Terms } from './Sponsors'
+import type { Metrics } from '../data'
 
 export const scenarios=[
   {id:'demo_withdraw',name:'Sponsor withdrawal',desc:'Withdraw the unpaid ₹20,000 demo commitment. Ledger recalculates funding and Nexus requests approval for a recovery plan.'},
@@ -27,25 +28,55 @@ export function Risks({data,act,navigate}:ViewProps) {
 }
 
 function ActionDetail({action:a,data}:{action:Row,data:any}){
-  const category=data.budget.find((b:Row)=>b.id===a.category_id), sponsor=data.sponsors.find((s:Row)=>s.id===a.sponsor_id), task=data.tasks.find((t:Row)=>t.id===a.task_id), prospect=data.prospects.find((p:Row)=>p.id===a.prospect_id)
+  const category=data.budget.find((b:Row)=>b.id===a.category_id)
+  const sponsor=data.sponsors.find((s:Row)=>s.id===a.sponsor_id)
+  const task=data.tasks.find((t:Row)=>t.id===a.task_id)
+  const prospect=data.prospects.find((p:Row)=>p.id===a.prospect_id)
   const details=Object.fromEntries(Object.entries(a).filter(([key])=>!['type','title'].includes(key)&&!key.endsWith('_id')))
-  return <div className="m-proposed"><span className="m-symbol"><ChevronRight size={15}/></span><div><strong>{a.title||human(a.type)}</strong>{(category||sponsor||task||prospect)&&<small>{[category?.category,sponsor?.name,task?.title,prospect?.name].filter(Boolean).join(' · ')}</small>}
-    {Object.keys(details).length>0&&<details><summary>Action details</summary><Terms terms={details}/></details>}</div></div>
+  const context=a.type==='reduce_budget' ? null : category?.category || sponsor?.name || task?.title || prospect?.name
+  return <li className="m-proposed">
+    <div>
+      <strong>{a.title||human(a.type)}</strong>
+      {context&&<small>{context}</small>}
+      {a.type==='reduce_budget' ?
+        <small className="m-action-amount">From {money(a.before)} to {money(a.after)}</small> :
+        Object.keys(details).length>0&&<details><summary>Action details</summary><Terms terms={details}/></details>}
+    </div>
+  </li>
+}
+
+function BudgetImpact({metrics,actions}:{metrics:Metrics;actions:Row[]}){
+  const savings=actions.filter(action=>action.type==='reduce_budget').reduce((sum,action)=>sum+action.saving,0)
+  if (!savings) return null
+  const plannedAfter=metrics.planned-savings
+  const shortfallAfter=Math.max(0,plannedAfter-metrics.projected_funding)
+  return <div className="m-budget-impact">
+    <h4>Projected impact after approval</h4>
+    <table aria-label="Projected budget impact">
+      <thead><tr><th scope="col">Budget metric</th><th scope="col">Current</th><th scope="col">Proposed</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Planned expenses</th><td>{money(metrics.planned)}</td><td>{money(plannedAfter)}</td></tr>
+        <tr><th scope="row">Funding shortfall</th><td>{money(metrics.shortfall)}</td><td>{money(shortfallAfter)}</td></tr>
+      </tbody>
+    </table>
+    {actions.some(action=>action.type==='backup_outreach')&&<p>Backup outreach is a draft. New funding enters the budget when a sponsor confirms.</p>}
+  </div>
 }
 
 export function Approvals({data,act}:ViewProps){
   const state=useAction(act), [filter,setFilter]=useState('Pending'),[selected,setSelected]=useState<Row|null>(null)
   const approvals:Row[]=data.approvals
   const found=approvals.filter(a=>filter==='History'?a.status!=='Pending':a.status==='Pending')
-  return <><Head title="Approvals" sub="Review the changes agents have prepared before they take effect."/><div className="m-toolrow"><Tabs current={filter} onChange={setFilter} options={['Pending','History']}/><span className="m-sub">{found.length} {filter==='Pending'?'awaiting review':'reviewed'}</span></div><Notice state={state}/>
+  return <><Head title="Approvals" sub="Review proposed changes to your event before applying them"/><div className="m-toolrow"><Tabs current={filter} onChange={setFilter} options={['Pending','History']}/><span className="m-sub">{found.length} {filter==='Pending'?'awaiting review':'reviewed'}</span></div><Notice state={state}/>
     <div className="m-stack">{found.map(a=>{
       const risk=data.risks.find((r:Row)=>r.id===a.risk_id),runs:Row[]=data.runs.filter((r:Row)=>r.workflow_id===a.workflow_id)
-      return <article key={a.id} className="m-card"><div className="m-titleline"><div className="m-agentinline"><span className="m-symbol"><ShieldCheck size={18}/></span><div><h3>{a.title}</h3><span className="m-sub">{day(a.created_at,true)} · {a.actions.length} proposed {a.actions.length===1?'action':'actions'}</span></div></div><Pill>{a.status}</Pill></div><p>{a.description}</p>
+      return <article key={a.id} className="m-card m-approval"><div className="m-titleline"><div><h3>{a.title}</h3><span className="m-sub">{day(a.created_at,true)} · {a.actions.length} proposed {a.actions.length===1?'action':'actions'}</span></div><Pill>{a.status}</Pill></div><p>{a.description}</p>
       {risk&&<div className="m-riskline"><ShieldAlert size={15}/><strong>{risk.title}</strong><Pill>{risk.severity}</Pill></div>}{risk?.impact&&<p>{risk.impact}</p>}
-      <div className="m-planlist">{a.actions.map((x:Row,i:number)=><ActionDetail key={i} action={x} data={data}/>)}</div>{runs.length>0&&<div className="m-workflowchips" aria-label="Agents involved">{[...new Set(runs.map(x=>x.agent))].map(agent=><span key={agent}><AgentMark name={agent}/>{agent}</span>)}</div>}
-      {a.status==='Pending'&&<div className="m-actions"><Button primary busy={state.busy} onClick={()=>setSelected({approval:a,decision:'approve'})}><Check/> Approve plan</Button><Button onClick={()=>setSelected({approval:a,decision:'reject'})} busy={state.busy}><X/> Reject plan</Button></div>}</article>
+      {a.status==='Pending'&&<BudgetImpact metrics={data.metrics} actions={a.actions}/>}
+      <ul className="m-planlist" aria-label="Proposed actions">{a.actions.map((x:Row,i:number)=><ActionDetail key={i} action={x} data={data}/>)}</ul>{runs.length>0&&<div className="m-workflowchips" aria-label="Agents involved">{[...new Set(runs.map(x=>x.agent))].map(agent=><span key={agent}><AgentMark name={agent}/>{agent}</span>)}</div>}
+      {a.status==='Pending'&&<div className="m-actions m-approval-actions"><Button primary busy={state.busy} onClick={()=>setSelected({approval:a,decision:'approve'})}><Check/> Approve plan</Button><Button onClick={()=>setSelected({approval:a,decision:'reject'})} busy={state.busy}><X/> Reject plan</Button></div>}</article>
     })}{!found.length&&<Panel><Empty title={filter==='Pending'?'No approvals waiting':'No reviewed plans yet'} detail={filter==='Pending'?'New agent proposals appear here when an organizer decision is needed.':undefined}/></Panel>}</div>
-    {selected&&<Dialog title={selected.decision==='approve'?'Approve and apply this plan?':'Reject this plan?'} onClose={()=>setSelected(null)}><Notice state={state}/><p className="m-copy">{selected.approval.title}</p><p className="m-copy">{selected.decision==='approve'?'ClubOS will apply the listed actions to '+data.event.name+' and record the result in the event history.':'ClubOS will close this proposal and keep the current event data.'}</p><div className="m-actions"><Button onClick={()=>setSelected(null)}>Cancel</Button><Button primary={selected.decision==='approve'} danger={selected.decision==='reject'} busy={state.busy} onClick={()=>state.run(selected.decision,{approval_id:selected.approval.id},undefined,()=>{setSelected(null);setFilter('History')})}>{selected.decision==='approve'?'Approve and apply':'Reject proposal'}</Button></div></Dialog>}
+    {selected&&<Dialog title={selected.decision==='approve'?'Approve and apply this plan?':'Reject this plan?'} onClose={()=>setSelected(null)}><Notice state={state}/><p className="m-copy"><strong>{selected.approval.title}</strong></p>{selected.decision==='approve'&&<BudgetImpact metrics={data.metrics} actions={selected.approval.actions}/>}<p className="m-copy">{selected.decision==='approve'?'ClubOS will apply the listed actions to '+data.event.name+' and record the result in the event history.':'ClubOS will close this proposal and keep the current event data.'}</p><div className="m-actions"><Button autoFocus onClick={()=>setSelected(null)}>Cancel</Button><Button primary={selected.decision==='approve'} danger={selected.decision==='reject'} busy={state.busy} onClick={()=>state.run(selected.decision,{approval_id:selected.approval.id},undefined,()=>{setSelected(null);setFilter('History')})}>{selected.decision==='approve'?'Approve and apply':'Reject proposal'}</Button></div></Dialog>}
   </>
 }
 
