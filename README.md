@@ -4,7 +4,7 @@
 
 ClubOS is a local event and sponsorship workspace for campus technical clubs. It implements the proposed interpretation of PS-CA2, Multi-Agent Technical Club Event & Sponsorship Lifecycle Orchestrator, for SYNCHRONISE 2026. Organizers can move from planning an event to reviewing sponsor terms, assigning deliverables and approving a recovery when funding or timelines change.
 
-## Run the demo
+## Run ClubOS
 
 From the repository root run:
 
@@ -12,7 +12,7 @@ From the repository root run:
 ./start.sh
 ```
 
-Open **http://127.0.0.1:8017**. The first start seeds Nexus Technical Club and CodeStorm 2026 in SQLite. The local demo opens directly with organizer access. The launcher uses the built frontend and virtual environment when available. A clean machine needs uv with Python 3.12 and Node 22.12+ with pnpm or npm. Allow network access for dependency installation on first use.
+Open **http://127.0.0.1:8017**. The first start seeds Nexus Technical Club and CodeStorm 2026 in SQLite. The landing page opens first. Use **Try the demo** to explore CodeStorm, or create an account and enter your club name, institution and role to start an empty workspace. Each account sees its own club events. The launcher uses the built frontend and virtual environment when available. A clean machine needs uv with Python 3.12 and Node 22.12+ with pnpm or npm. Allow network access for dependency installation on first use.
 
 For separate frontend development, run the API on port 8017 and run `pnpm dev` in `frontend`. Vite proxies API requests to the backend. To refresh the production UI, run `pnpm build` inside `frontend` before starting the server.
 
@@ -51,6 +51,6 @@ Browser tests start an isolated server on port 8028 and use a temporary database
 
 ## Deployment and scope
 
-For a rehearsal machine, copy the source, install the prerequisites, run the launcher and keep the process running. Persist `backend/data` across restarts or use `CLUBOS_DB` on a persistent volume. This is a single-process, loopback organizer demo. Public or multi-tenant deployment requires accounts, authorization, isolation, backups and a managed job runner. The prototype uses fictional prospect profiles, organizer-reviewed drafts and manually recorded financial facts. It does not send email, publish marketing, process payments or verify externally negotiated agreements. PDF extraction requires selectable text. Automation time-savings are estimates. Gmail, public registration, QR passes, certificates, real-time web prospect research and refund processing remain outside this local prototype.
+For a rehearsal machine, copy the source, install the prerequisites, run the launcher and keep the process running. Persist `backend/data` across restarts or use `CLUBOS_DB` on a persistent volume. This is a single-process, loopback organizer demo. Organizer accounts and workspace isolation are intended for local testing. Public deployment requires production authentication controls, account recovery, backups and a managed job runner. The prototype uses fictional prospect profiles, organizer-reviewed drafts and manually recorded financial facts. It does not send email, publish marketing, process payments or verify externally negotiated agreements. PDF extraction requires selectable text. Automation time-savings are estimates. Gmail, public registration, QR passes, certificates, real-time web prospect research and refund processing remain outside this local prototype.
 
 See [architecture](docs/architecture.md), [API notes](docs/api.md), [demo walkthrough](docs/demo-guide.md) and the [development checklist](docs/checklist.md). Sample inputs are in [demo](demo/).

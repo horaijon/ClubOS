@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from uuid import UUID, uuid4
+from uuid import UUID, NAMESPACE_URL, uuid4, uuid5
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, File, Header, HTTPException, Request, UploadFile
@@ -17,7 +17,8 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
-from . import api, db, engine
+from . import api, auth, db, engine
+from .seed import CLUB
 from .reports import event_report
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,11 @@ async def lifespan(app):
     db.init_db()
     with db.transaction(write=True) as conn:
         conn.execute("""CREATE TABLE IF NOT EXISTS planning_jobs(
-            job_id TEXT PRIMARY KEY,status TEXT NOT NULL,id TEXT,detail TEXT NOT NULL,input_hash TEXT NOT NULL)""")
+            job_id TEXT PRIMARY KEY,status TEXT NOT NULL,id TEXT,detail TEXT NOT NULL,
+            input_hash TEXT NOT NULL,club_id TEXT REFERENCES clubs)""")
+        if "club_id" not in {row["name"] for row in conn.execute("PRAGMA table_info(planning_jobs)")}:
+            conn.execute("ALTER TABLE planning_jobs ADD COLUMN club_id TEXT REFERENCES clubs")
+            conn.execute("UPDATE planning_jobs SET club_id=?", (CLUB,))
         conn.execute("UPDATE planning_jobs SET status='failed', detail='Server restarted during planning. Check Events before retrying.' WHERE status IN ('running','queued')")
     worker = asyncio.create_task(reminders())
     try:
@@ -58,6 +63,7 @@ async def lifespan(app):
 
 app = FastAPI(title="ClubOS",version="1.0",lifespan=lifespan)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost","127.0.0.1","testserver"])
+app.include_router(auth.router)
 app.include_router(api.router)
 
 
@@ -69,7 +75,10 @@ async def local_writes(request, call_next):
             return JSONResponse({"detail":"This demo accepts changes from its local workspace."},status_code=403)
     if request.headers.get("content-length","").isdigit() and int(request.headers["content-length"]) > 4_500_000:
         return JSONResponse({"detail":"Maximum request size is 4 MB."},status_code=413)
-    return await call_next(request)
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.get("/api/health")
@@ -77,11 +86,11 @@ def health():
     return {"status":"ready","gemini_configured":bool(os.getenv("GEMINI_API_KEY"))}
 
 
-def run_planning(job_id, data):
+def run_planning(job_id, data, club):
     with db.transaction(write=True) as conn:
         conn.execute("UPDATE planning_jobs SET status='running',detail='Nexus is coordinating event planning.' WHERE job_id=?",(job_id,))
     try:
-        result = api.create_event(data)
+        result = api.create_event(data,club)
         event_id, status, detail = result["id"], "completed", "Event plan saved."
     except Exception as exc:
         event_id, status = None, "failed"
@@ -92,8 +101,8 @@ def run_planning(job_id, data):
 
 
 @app.post("/api/planning-jobs",status_code=202)
-def start_planning(data: api.EventCreate, background: BackgroundTasks, idempotency_key: UUID | None=Header(None)):
-    job_id = (idempotency_key or uuid4()).hex
+def start_planning(data: api.EventCreate, background: BackgroundTasks, club: auth.Workspace, idempotency_key: UUID | None=Header(None)):
+    job_id = uuid5(NAMESPACE_URL, f"clubos:{club['id']}:{idempotency_key}").hex if idempotency_key else uuid4().hex
     fingerprint = hashlib.sha256(data.model_dump_json().encode()).hexdigest()
     with db.transaction(write=True) as conn:
         existing = conn.execute("SELECT input_hash FROM planning_jobs WHERE job_id=?",(job_id,)).fetchone()
@@ -101,24 +110,23 @@ def start_planning(data: api.EventCreate, background: BackgroundTasks, idempoten
             if existing["input_hash"] != fingerprint:
                 raise HTTPException(409,"This planning request was already used for a different event.")
             return {"job_id":job_id}
-        conn.execute("INSERT INTO planning_jobs VALUES(?, 'queued', NULL, 'Waiting for Nexus.', ?)",(job_id,fingerprint))
-    background.add_task(run_planning,job_id,data)
+        conn.execute("INSERT INTO planning_jobs(job_id,status,detail,input_hash,club_id) VALUES(?, 'queued', 'Waiting for Nexus.', ?, ?)",(job_id,fingerprint,club["id"]))
+    background.add_task(run_planning,job_id,data,club)
     return {"job_id":job_id}
 
 
 @app.get("/api/jobs/{job_id}")
-def job_status(job_id: str):
+def job_status(job_id: str, club: auth.Workspace):
     with db.transaction() as conn:
-        row = conn.execute("SELECT job_id,status,id,detail FROM planning_jobs WHERE job_id=?",(job_id,)).fetchone()
+        row = conn.execute("SELECT job_id,status,id,detail FROM planning_jobs WHERE job_id=? AND club_id=?",(job_id,club["id"])).fetchone()
     if row is None:
         raise HTTPException(404,"Planning job not found.")
     return dict(row)
 
 
-def snapshot(event_id):
+def snapshot(event_id,club):
     with db.transaction() as conn:
-        if not conn.execute("SELECT 1 FROM events WHERE id=?",(event_id,)).fetchone():
-            raise HTTPException(404,"Event not found.")
+        auth.authorize_event(conn,event_id,club["id"])
         return engine.workspace(conn,event_id)
 
 
@@ -127,13 +135,13 @@ def pdf_response(content, filename):
 
 
 @app.get("/api/events/{event_id}/report.pdf")
-def event_pdf(event_id: str):
-    return pdf_response(event_report(snapshot(event_id)), "ClubOS-event-report")
+def event_pdf(event_id: str,club: auth.Workspace):
+    return pdf_response(event_report(snapshot(event_id,club)), "ClubOS-event-report")
 
 
 @app.get("/api/events/{event_id}/sponsors/{sponsor_id}/report.pdf")
-def sponsor_pdf(event_id: str,sponsor_id: str):
-    state = snapshot(event_id)
+def sponsor_pdf(event_id: str,sponsor_id: str,club: auth.Workspace):
+    state = snapshot(event_id,club)
     sponsor = next((s for s in state["sponsors"] if s["id"]==sponsor_id),None)
     if not sponsor:
         raise HTTPException(404,"Sponsor not found in this event.")
@@ -141,8 +149,8 @@ def sponsor_pdf(event_id: str,sponsor_id: str):
 
 
 @app.post("/api/events/{event_id}/agreement-text")
-def agreement_text(event_id: str,file: UploadFile=File(...)):
-    snapshot(event_id)
+def agreement_text(event_id: str,club: auth.Workspace,file: UploadFile=File(...)):
+    snapshot(event_id,club)
     content = file.file.read(4_000_001)
     if len(content)>4_000_000:
         raise HTTPException(413,"PDF must be smaller than 4 MB.")

@@ -78,7 +78,8 @@ def budgets(c,eid):
 
 def prospects(c,event):
     words = set(re.findall(r'[a-z0-9]+',' '.join(str(event[k]).lower() for k in ['type','name','goals','description','college','venue']).replace('hackathons','hackathon')))
-    found = rows(c,'SELECT * FROM profiles WHERE event_scope IS NULL OR event_scope=?',(event['id'],))
+    from .seed import CLUB
+    found = rows(c,'SELECT * FROM profiles WHERE event_scope=? OR (event_scope IS NULL AND ?=?)',(event['id'],event['club_id'],CLUB))
     for p in found:
         tags=p.pop('tags').split(',')
         matches=[t for t in tags if t in words]

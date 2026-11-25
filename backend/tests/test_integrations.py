@@ -16,6 +16,7 @@ def client(tmp_path,monkeypatch):
     monkeypatch.setenv("CLUBOS_DB", str(tmp_path/"integration.sqlite3"))
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     with TestClient(app) as http:
+        assert http.post("/api/auth/demo").status_code == 200
         yield http
 
 

@@ -1,10 +1,22 @@
 import { test, expect } from '@playwright/test'
 
-test('organizer creates an event and reopens its saved plan', async ({page,request})=>{
+test('organizer creates an event and reopens its saved plan', async ({page})=>{
   const errors:string[]=[]
   page.on('pageerror',error=>errors.push(error.message))
-  await page.goto('/#events')
-  await page.getByRole('button',{name:'Create event',exact:true}).first().click()
+  await page.goto('/')
+  await expect(page.getByRole('heading',{name:/Big events.*Small teams/})).toBeVisible()
+  await expect(page.getByText('CodeStorm 2026',{exact:true})).toHaveCount(0)
+  await page.getByRole('link',{name:'Create your workspace'}).click()
+  await page.getByLabel('Full name').fill('Asha Menon')
+  await page.getByLabel('Email',{exact:true}).fill('asha@example.test')
+  await page.getByLabel('Password',{exact:true}).fill('test-club-password')
+  await page.getByRole('button',{name:'Create account'}).click()
+  await page.getByLabel('Club name').fill('Robotics Society')
+  await page.getByLabel('College or institution').fill('RIT')
+  await page.getByRole('button',{name:'Create club workspace'}).click()
+  await expect(page.getByRole('heading',{name:'Your next event starts here'})).toBeVisible()
+  expect(await (await page.request.get('/api/events')).json()).toEqual([])
+  await page.getByRole('button',{name:'Create your first event'}).click()
   const form=page.getByRole('dialog')
   await form.getByLabel('Event name',{exact:false}).fill('Prototype Night')
   await form.getByLabel('College or organization',{exact:false}).fill('RIT')
@@ -18,17 +30,25 @@ test('organizer creates an event and reopens its saved plan', async ({page,reque
   await expect(page.getByRole('button',{name:'Switch event'})).toContainText('Prototype Night')
   await page.reload()
   await expect(page.getByRole('button',{name:'Switch event'})).toContainText('Prototype Night')
-  const events=await (await request.get('/api/events')).json()
+  const events=await (await page.request.get('/api/events')).json()
   const created=events.find((e:{name:string})=>e.name==='Prototype Night')
-  const data=await (await request.get('/api/events/'+created.id)).json()
+  const data=await (await page.request.get('/api/events/'+created.id)).json()
   expect(data.tasks.length).toBeGreaterThan(0)
   expect(data.runs.length).toBeGreaterThan(0)
+  await page.getByRole('complementary',{name:'Workspace sidebar'}).getByRole('button',{name:/Asha Menon/}).click()
+  await page.getByRole('button',{name:'Log out'}).click()
+  await page.getByRole('link',{name:'Log in',exact:true}).first().click()
+  await page.getByLabel('Email',{exact:true}).fill('asha@example.test')
+  await page.getByLabel('Password',{exact:true}).fill('test-club-password')
+  await page.getByRole('button',{name:'Log in',exact:true}).click()
+  await expect(page.getByRole('button',{name:'Switch event'})).toContainText('Prototype Night')
   expect(errors).toEqual([])
 })
 
 test('every operational view renders with the demo data', async ({page})=>{
   const errors:string[]=[]
   page.on('pageerror',error=>errors.push(error.message))
+  await page.request.post('/api/auth/demo')
   for(const view of ['dashboard','sponsors','finance','agents','tasks','operations','marketing','risks','approvals','reports','copilot','workspace']){
     await page.goto('/#'+view)
     await expect(page.getByRole('main').locator('h1').first()).toBeVisible()
@@ -39,6 +59,8 @@ test('every operational view renders with the demo data', async ({page})=>{
 test('mobile navigation and keyboard search', async ({page})=>{
   await page.setViewportSize({width:390,height:844})
   await page.goto('/')
+  await page.getByRole('button',{name:'Try the demo'}).click()
+  await expect(page.getByRole('heading',{name:'CodeStorm 2026'})).toBeVisible()
   await page.getByRole('button',{name:'Open navigation'}).click()
   await page.getByRole('navigation',{name:'Main navigation'}).getByRole('link',{name:'Finance'}).click()
   await expect(page.getByRole('main').locator('h1')).toBeVisible()
@@ -50,15 +72,16 @@ test('mobile navigation and keyboard search', async ({page})=>{
   await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
-test('withdrawal opens a funding recovery plan and approval changes persisted allocations', async ({page,request})=>{
+test('withdrawal opens a funding recovery plan and approval changes persisted allocations', async ({page})=>{
+  await page.request.post('/api/auth/demo')
   await page.goto('/#risks')
   await page.getByRole('button',{name:'Demo scenarios'}).click()
   await page.locator('article').filter({has:page.getByRole('heading',{name:'Sponsor withdrawal'})}).getByRole('button',{name:'Run scenario'}).click()
   await page.getByRole('dialog').getByRole('button',{name:'Run scenario'}).click()
   await expect(page.getByRole('heading',{name:'Recover the funding shortfall'})).toBeVisible()
   await expect(page.getByRole('table',{name:'Projected budget impact'})).toContainText('₹15,000')
-  const events=await (await request.get('/api/events')).json()
-  const snapshot=async ()=>(await request.get('/api/events/'+events[0].id)).json()
+  const events=await (await page.request.get('/api/events')).json()
+  const snapshot=async ()=>(await page.request.get('/api/events/'+events[0].id)).json()
   const withdrawn=await snapshot()
   expect(withdrawn.metrics.shortfall).toBe(1500000)
   const approve = page.getByRole('button',{name:'Approve plan',exact:true})

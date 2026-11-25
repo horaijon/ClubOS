@@ -1,3 +1,11 @@
+export interface AuthSession {
+ account_id: string|null;
+ name: string;
+ email: string|null;
+ role: string;
+ demo: boolean;
+ club: {id:string;name:string;college:string}|null;
+}
 export interface EventRecord {
   id: string; name: string; type: string; description: string; venue: string; start_date: string; end_date: string;
   target: number; initial_budget: number; sponsorship_target: number; club: string; college: string; is_demo: boolean; goals: string;

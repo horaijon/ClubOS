@@ -11,6 +11,7 @@ def workspace(tmp_path, monkeypatch):
     monkeypatch.setenv("CLUBOS_DB", str(tmp_path / "workflow.sqlite3"))
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     with TestClient(app) as client:
+        assert client.post("/api/auth/demo").status_code == 200
         yield client
 
 
@@ -64,6 +65,7 @@ def test_withdrawal_approval_and_idempotency(workspace):
     assert len(applied["sponsors"]) == len(proposed["sponsors"]) + 1
 
     with TestClient(app) as restarted:
+        assert restarted.post("/api/auth/demo").status_code == 200
         assert Event(restarted, event.id).snapshot()["metrics"] == applied["metrics"]
 
 

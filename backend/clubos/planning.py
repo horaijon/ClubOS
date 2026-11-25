@@ -106,7 +106,7 @@ def generate(flow,seed=False):
         insert(c,'packages',event_id=eid,name=name,amount=e['sponsorship_target']*pct//100,benefits=benefits)
     top=', '.join(p['name'] for p in matches[:3])
     contexts=[
-        ('Magnet','rank_sponsors',dict(event_type=e['type'],goals=e['goals'],matches=[{'name':p['name'],'reason':p['reason']} for p in matches[:3]]),f'Prioritize {top} according to event fit and recorded relationships.'),
+        ('Magnet','rank_sponsors',dict(event_type=e['type'],goals=e['goals'],matches=[{'name':p['name'],'reason':p['reason']} for p in matches[:3]]),(f'Prioritize {top} according to event fit and recorded relationships.' if top else 'Import sponsor prospects to rank opportunities for this event.')),
         ('Echo','draft_campaign',dict(instruction='Write an editable short announcement.',venue=e['venue'],start_date=e['start_date'],event_type=e['type'],goals=e['goals']),f'Join {e["name"]} on {e["start_date"]} at {e["venue"]}. Bring your team to our {e["type"]} and build alongside other students. Registration is open.'),
     ]
     existing_titles = [entry[0] for entry in PLAN]

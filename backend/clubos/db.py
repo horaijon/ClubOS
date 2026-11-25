@@ -9,6 +9,15 @@ from pathlib import Path
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS clubs (id TEXT PRIMARY KEY, name TEXT NOT NULL, college TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS accounts (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT COLLATE NOCASE NOT NULL UNIQUE,
+    salt TEXT NOT NULL, digest TEXT NOT NULL, club_id TEXT REFERENCES clubs
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY, account_id TEXT REFERENCES accounts ON DELETE CASCADE, demo INTEGER NOT NULL DEFAULT 0,
+    expires_at INTEGER NOT NULL,
+    CHECK ((demo=1 AND account_id IS NULL) OR (demo=0 AND account_id IS NOT NULL))
+);
 CREATE TABLE IF NOT EXISTS members (id TEXT PRIMARY KEY, club_id TEXT REFERENCES clubs(id), name TEXT NOT NULL, role TEXT NOT NULL, department TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, club_id TEXT NOT NULL REFERENCES clubs(id), name TEXT NOT NULL, type TEXT NOT NULL, description TEXT NOT NULL, venue TEXT NOT NULL, start_date TEXT NOT NULL, end_date TEXT NOT NULL, target INTEGER NOT NULL CHECK(target>0), initial_budget INTEGER NOT NULL CHECK(initial_budget>=0), sponsorship_target INTEGER NOT NULL CHECK(sponsorship_target>=0), college TEXT NOT NULL, goals TEXT NOT NULL, requirements TEXT NOT NULL, constraints_text TEXT NOT NULL, is_demo INTEGER DEFAULT 0, registration_milestone INTEGER DEFAULT 0, milestone_date TEXT, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS team (event_id TEXT REFERENCES events ON DELETE CASCADE, member_id TEXT REFERENCES members, PRIMARY KEY(event_id,member_id));

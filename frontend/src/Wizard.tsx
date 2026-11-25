@@ -6,29 +6,29 @@ import { api, saved, save, type Snapshot } from './data';
 const steps=['Event details','Resources','Planning brief'];
 function dateInput(offset:number){const d=new Date();d.setDate(d.getDate()+offset);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 type Job={status:'queued'|'running'|'completed'|'failed';id:string|null;detail:string};
-export default function Wizard({data,close,complete}:{data:Snapshot|null;close:()=>void;complete:(id:string)=>Promise<void>}) {
- const [step,setStep]=useState(0),[job,setJob]=useState(()=>saved('planning_job')||''),[status,setStatus]=useState(''),[error,setError]=useState(''),[posting,setPosting]=useState(false);
+export default function Wizard({data,college,jobKey,close,complete}:{data:Snapshot|null;college:string;jobKey:string;close:()=>void;complete:(id:string)=>Promise<void>}) {
+ const [step,setStep]=useState(0),[job,setJob]=useState(()=>saved(jobKey)||''),[status,setStatus]=useState(''),[error,setError]=useState(''),[posting,setPosting]=useState(false);
  const request = useRef<{body:string;key:string}|null>(null);
- const [form,setForm]=useState({name:'',type:'Hackathon',description:'',college:data?.event.college||'',venue:'',start_date:dateInput(14),end_date:dateInput(15),target:'100',initial_budget:'0',sponsorship_target:'0',members:'',goals:'',requirements:'',constraints:''});
+ const [form,setForm]=useState({name:'',type:'Hackathon',description:'',college:data?.event.college||college,venue:'',start_date:dateInput(14),end_date:dateInput(15),target:'100',initial_budget:'0',sponsorship_target:'0',members:'',goals:'',requirements:'',constraints:''});
  function change(key:keyof typeof form,value:string){setForm(f=>({...f,[key]:value,...(key==='start_date'&&value>f.end_date?{end_date:value}:{})}));}
  useEffect(()=>{
   if(!job)return;let active=true;let timer:ReturnType<typeof setTimeout>;
   async function poll(){
    try {const result=await api<Job>('/api/jobs/'+encodeURIComponent(job));if(!active)return;
-    if(result.status==='completed'&&result.id){await complete(result.id);save('planning_job','');return}
-    if(result.status==='failed'){request.current=null;save('planning_job','');setJob('');setError(result.detail||'Planning stopped. Review your event details and try again.');return}
+    if(result.status==='completed'&&result.id){await complete(result.id);save(jobKey,'');return}
+    if(result.status==='failed'){request.current=null;save(jobKey,'');setJob('');setError(result.detail||'Planning stopped. Review your event details and try again.');return}
     setStatus(result.detail||(result.status==='queued'?'Your planning job is queued.':'Nexus is coordinating your event plan.'));
    }catch(err){if(!active)return;setStatus('Connection interrupted. Reconnecting to your planning job.');}
    if(active)timer=setTimeout(poll,1200);
   }
   void poll();return()=>{active=false;clearTimeout(timer)};
- },[job,complete]);
+ },[job,complete,jobKey]);
  async function submit(ev:FormEvent){ev.preventDefault();if(step<2){setStep(step+1);return}setPosting(true);setError('');
   const body=JSON.stringify({...form,target:Number(form.target),initial_budget:Math.round(Number(form.initial_budget)*100),sponsorship_target:Math.round(Number(form.sponsorship_target)*100),members:form.members.split(/[,\n]/).map(v=>v.trim()).filter(Boolean)});
   if(request.current?.body!==body)request.current={body,key:crypto.randomUUID()};
   try {
    const result=await api<{job_id:string}>('/api/planning-jobs',{method:'POST',body,headers:{'Idempotency-Key':request.current.key}});
-   save('planning_job',result.job_id);
+   save(jobKey,result.job_id);
    setJob(result.job_id);
    setStatus('Your planning job is queued.');
   }

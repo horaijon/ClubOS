@@ -9,20 +9,20 @@ from .planning import Flow,generate
 from . import sponsorship as crm
 from . import operations as ops
 from . import recovery
-from .seed import DEMO,CLUB,seed_event
+from .seed import DEMO,seed_event
 
-def create(c,data):
+def create(c,data,club_id):
     eid=uid()
     if iso(data['start_date'])>iso(data['end_date']):raise Invalid('Event end date must be on or after the start.')
     chosen=data.pop('members',[])
     if 'constraints' in data:data['constraints_text']=data.pop('constraints')
-    insert(c,'events',id=eid,club_id=CLUB,registration_milestone=max(1,data['target']//2),milestone_date=min(iso(data['start_date']),max(date.today(),iso(data['start_date'])-timedelta(days=7))).isoformat(),created_at=now(),**data)
-    members=rows(c,'SELECT * FROM members WHERE club_id=? ORDER BY rowid',(CLUB,))
+    insert(c,'events',id=eid,club_id=club_id,registration_milestone=max(1,data['target']//2),milestone_date=min(iso(data['start_date']),max(date.today(),iso(data['start_date'])-timedelta(days=7))).isoformat(),created_at=now(),**data)
+    members=rows(c,'SELECT * FROM members WHERE club_id=? ORDER BY rowid',(club_id,))
     if chosen:
         ids=[]
         for name in chosen:
             member=next((m for m in members if m['id']==name or m['name'].lower()==name.lower()),None)
-            mid=member['id'] if member else insert(c,'members',club_id=CLUB,name=name,department='Planning',role='Organizer')
+            mid=member['id'] if member else insert(c,'members',club_id=club_id,name=name,department='Planning',role='Organizer')
             if mid not in ids:ids.append(mid)
     else:ids=[m['id'] for m in members[:12]]
     c.executemany('INSERT INTO team VALUES (?,?)',[(eid,k) for k in ids])
@@ -135,7 +135,7 @@ def route(f,k,p):
         f.note('Proposed package updated',b['name'],'Magnet')
         return dict(message='Package updated.')
     if k=='add_member':
-        m=insert(c,'members',club_id=CLUB,name=required(p,'name',120),role=required(p,'role',100),department=required(p,'department',100))
+        m=insert(c,'members',club_id=f.e['club_id'],name=required(p,'name',120),role=required(p,'role',100),department=required(p,'department',100))
         c.execute('INSERT INTO team VALUES (?,?)',(f.id,m))
         f.note('Organizer added to event',p['name'],'Relay')
         return dict(message='Team member added.',id=m)
