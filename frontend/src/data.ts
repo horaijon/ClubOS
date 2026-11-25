@@ -1,0 +1,38 @@
+export interface EventRecord {
+  id: string; name: string; type: string; description: string; venue: string; start_date: string; end_date: string;
+  target: number; initial_budget: number; sponsorship_target: number; club: string; college: string; is_demo: boolean; goals: string;
+}
+export interface Metrics {
+  planned: number; actual: number; committed: number; received: number; projected_funding: number; balance: number;
+  cash_balance: number; shortfall: number; outstanding: number; registered: number; target: number; completed: number;
+  total_tasks: number; overdue: number; active_risks: number; pending_approvals: number; readiness: number; actions: number; minutes_saved: number;
+}
+export interface Task { id: string; title: string; description: string; department: string; owner: string; status: string; priority: string; due_date: string; }
+export interface Run {id:string; agent:string; trigger:string; summary:string; mode:string; status:string; created_at:string; workflow_id:string;}
+export interface Snapshot {
+ event: EventRecord; metrics: Metrics; tasks: Task[]; sponsors: {id:string;name:string;stage:string}[];
+ budget:{id:string;category:string;planned:number;actual:number}[]; risks:{id:string;title:string;severity:string;status:string}[];
+ approvals:{id:string;title:string;status:string}[]; runs: Run[]; marketing: unknown[];
+ participants:{id:string;created_at:string}[]; members:{id:string;name:string;role:string}[];
+ registration_history?:{date:string;count:number;cumulative:number}[]; activity:{id:string;title:string;description:string;agent:string;created_at:string}[];
+}
+export type EventOption = Pick<EventRecord,'id'|'name'>;
+export const money = (paise: number) => new Intl.NumberFormat('en-IN', {style:'currency',currency:'INR',maximumFractionDigits:0}).format(paise / 100);
+export function dateOf(value:string) { return new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? value+'T00:00:00' : value); }
+export function shortDate(value:string, long=false) {
+ const date = dateOf(value);
+ return Number.isNaN(date.getTime()) ? 'Date pending' : date.toLocaleDateString('en-GB',{day:'numeric',month:long?'long':'short',...(long?{year:'numeric'}:{})});
+}
+export const ratio = (numerator:number, denominator:number) => denominator>0 ? Math.round(numerator*100/denominator) : 0;
+export async function api<T>(url:string, options?:RequestInit): Promise<T> {
+ const response = await fetch(url,{...options,headers:{...(options?.body?{'Content-Type':'application/json'}:{}),...options?.headers}});
+ const body = await response.json().catch(()=>null);
+ if(!response.ok) {
+   const detail=body?.detail;
+   const message=typeof detail==='string'?detail:Array.isArray(detail)?detail.map((issue:{msg:string})=>issue.msg).join('. '):'The workspace could not complete this request.';
+   throw new Error(message);
+ }
+ return body as T;
+}
+export function saved(key:string) { try {return localStorage.getItem('clubos.v1.'+key)} catch { return null } }
+export function save(key:string,value:string) { try {localStorage.setItem('clubos.v1.'+key,value)} catch { /* Browsing without storage still works. */ } }

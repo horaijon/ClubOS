@@ -1,0 +1,67 @@
+"""HTTP boundary for the local demo workspace."""
+from datetime import date,timedelta
+from typing import Any,Annotated
+from fastapi import APIRouter,HTTPException
+from pydantic import BaseModel,Field,ConfigDict,StringConstraints,model_validator
+from . import db,engine
+from .state import Invalid,Missing,Conflict
+
+router=APIRouter(prefix='/api')
+Name=Annotated[str,StringConstraints(strip_whitespace=True,min_length=1,max_length=160)]
+Money=Annotated[int,Field(strict=True,ge=0,le=100_000_000_000)]
+
+class EventCreate(BaseModel):
+    model_config=ConfigDict(extra='forbid',str_strip_whitespace=True)
+    name:Name
+    type:Name='Hackathon'
+    description:str=Field(default='',max_length=3500)
+    venue:str=Field(default='Campus auditorium',max_length=220)
+    start_date:date=Field(default_factory=lambda:date.today()+timedelta(days=14))
+    end_date:date|None=None
+    target:int=Field(default=100,ge=1,le=100000,strict=True)
+    initial_budget:Money=0
+    sponsorship_target:Money=0
+    college:str=Field(default='Illustrative campus workspace',max_length=200)
+    goals:str=Field(default='',max_length=2500)
+    requirements:str=Field(default='',max_length=2500)
+    constraints:str=Field(default='',max_length=2500)
+    members:list[Name]=Field(default_factory=list,max_length=100)
+
+    @model_validator(mode='after')
+    def date_order(self):
+        self.end_date=self.end_date or self.start_date
+        if self.end_date<self.start_date:raise ValueError('End date precedes start date.')
+        return self
+
+class Action(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    type:Annotated[str,StringConstraints(min_length=1,max_length=65,pattern='^[a-z_]+$')]
+    payload:dict[str,Any]=Field(default_factory=dict)
+    request_id:Annotated[str,StringConstraints(min_length=1,max_length=150)]
+
+def error(exc):
+    return HTTPException(404 if isinstance(exc,Missing) else 409 if isinstance(exc,Conflict) else 422,str(exc))
+
+@router.get('/events')
+def events():
+    with db.transaction() as c:
+        return db.rows(c,'SELECT id,name FROM events ORDER BY is_demo DESC,created_at DESC')
+
+@router.post('/events',status_code=201)
+def create_event(input:EventCreate):
+    try:
+        with db.transaction(True) as c:
+            return engine.create(c,input.model_dump(mode='json'))
+    except Invalid as exc:raise error(exc) from exc
+
+@router.get('/events/{event_id}')
+def event(event_id:str):
+    try:
+        with db.transaction() as c:return engine.workspace(c,event_id)
+    except Invalid as exc:raise error(exc) from exc
+
+@router.post('/events/{event_id}/actions')
+def action(event_id:str,input:Action):
+    try:
+        with db.transaction(True) as c:return engine.dispatch(c,event_id,input.type,input.payload,input.request_id)
+    except Invalid as exc:raise error(exc) from exc
