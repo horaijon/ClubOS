@@ -35,7 +35,7 @@ export function Finance({data,act,navigate}:ViewProps){
   const m=data.metrics, budget:Row[]=data.budget, expenses:Row[]=data.expenses||[]
   const [edit,setEdit]=useState<Row|null>(null),[tab,setTab]=useState('Allocations')
   const state=useAction(act)
-  const colors=['#b8a5f5','#70cbb7','#829fdd','#c6ae83','#b58cb2','#78aabb','#85879c']
+  const colors=['#1539de','#268468','#5479c1','#977435','#8d5bb5','#217786','#586986']
   return <><Head title="Finance" sub="Track the event budget, cash in hand and sponsor payments." action={<Button primary onClick={()=>setEdit({})}><Plus/> Record expense</Button>}/>
     <StatGrid items={[{label:'Projected funding',value:money(m.projected_funding),detail:'Club funds + commitments'},{label:'Planned expenses',value:money(m.planned)},{label:m.balance<0?'Projected shortfall':'Projected surplus',value:money(Math.abs(m.balance)),tone:m.balance<0?'red':'mint'},{label:'Available cash',value:money(m.cash_balance),detail:'After recorded expenses'}]}/>
     <div className="m-toolrow"><Tabs options={['Allocations','Expenses','Sponsor payments']} current={tab} onChange={setTab}/><Button onClick={()=>state.run('budget_optimize',{},'Budget reviewed. Check Approvals for proposed changes.')} busy={state.busy}><Sparkles/> Review budget</Button></div><Notice state={state}/>

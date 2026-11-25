@@ -5,7 +5,7 @@ import type { Row, ViewProps } from './ui'
 import ImportCsv from './ImportCsv'
 
 export const stages=['Identified','Shortlisted','Outreach Drafted','Contacted','Responded','Negotiating','Confirmed','Declined','Withdrawn']
-const stageColors=['#9193ae','#a292ec','#b99bef','#7daddd','#6eb8b9','#e2be78','#74c69f','#cb8991','#b4808b']
+const stageColors=['#586986','#5479c1','#7259b0','#264cb9','#217786','#977435','#268468','#aa5466','#8c2c3c']
 
 export default function Sponsors(props:ViewProps) {
   const {data,act}=props

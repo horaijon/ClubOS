@@ -52,7 +52,7 @@ export function Dialog({title,children,onClose}:{title:string,children:ReactNode
     node?.querySelector<HTMLElement>('[data-initial-focus]')?.focus()
     return ()=>{node?.close();if(previous?.isConnected)previous.focus()}
   },[])
-  return <dialog className="m-dialog m-view" aria-labelledby={titleId} ref={ref} onCancel={e=>{e.preventDefault();onClose()}} onClick={e=>{if(e.target===e.currentTarget)onClose()}}><div className="m-dialoginner"><div className="m-dialoghead"><h2 id={titleId}>{title}</h2><button type="button" className="m-icon" aria-label="Close dialog" onClick={onClose}><X size={18}/></button></div>{children}</div></dialog>
+  return <dialog className="m-dialog m-view glass" aria-labelledby={titleId} ref={ref} onCancel={e=>{e.preventDefault();onClose()}} onClick={e=>{if(e.target===e.currentTarget)onClose()}}><div className="m-dialoginner"><div className="m-dialoghead"><h2 id={titleId}>{title}</h2><button type="button" className="m-icon" aria-label="Close dialog" onClick={onClose}><X size={18}/></button></div>{children}</div></dialog>
 }
 export function Field({label,children}:{label:string,children:ReactNode}) {
   return <label className="m-field"><span>{label}</span>{children}</label>

@@ -20,7 +20,7 @@ export default function Landing({onDemo, busy, error, session}:{
   const workspaceHref=session&&!session.demo?(session.club?"#dashboard":"#setup"):null
   return <main className="site">
     <section className="site-blue">
-      <header className="site-header">
+      <header className="site-header glass glass--cobalt">
         <SiteBrand/>
         <nav className="site-nav" aria-label="About ClubOS"><a href="#how-it-works">How it works</a><a href="#see-the-demo">Live demo</a></nav>
         <a className="site-login" href={workspaceHref||"#login"}>{workspaceHref?"Open workspace":"Log in"}</a>

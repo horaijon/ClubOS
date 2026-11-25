@@ -1,0 +1,61 @@
+:root {
+  --font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, monospace;
+  --cobalt: #1539de;
+  --cobalt-deep: #0b249f;
+  --lime: #d3fa57;
+  --lime-hover: #e4ff90;
+  --ink: #171d38;
+  --paper: #f7f8ff;
+  --bg: #eaf0ff;
+  --surface: #f7f9ff;
+  --raised: #e4ebfc;
+  --line: #c8d3ec;
+  --text: var(--ink);
+  --secondary: #334264;
+  --muted: #4d5d7e;
+  --accent: #1a40c5;
+  --teal: #17654b;
+  --amber: #885400;
+  --danger: #8c2c3c;
+  --blue-tint: #dfe7ff;
+  --ok-tint: #e0f2e9;
+  --warning-tint: #fff2d8;
+  --danger-tint: #fdebf0;
+  --brand-grid: linear-gradient(#ffffff1c 1px,transparent 1px),linear-gradient(90deg,#ffffff1c 1px,transparent 1px);
+  --glass-fill: #f5f8ff;
+  --glass-border: #ffffffc9;
+  --glass-shadow: 0 1px 2px #162c7014,0 10px 32px #18357514,inset 0 1px 0 #ffffffee;
+  --glass-filter: none;
+}
+.glass {
+  background: var(--glass-fill);
+  border-color: var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+}
+.glass--cobalt {
+  --glass-fill: #1330ae;
+  --glass-border: #bfd3ff59;
+  --glass-shadow: 0 10px 30px #0716612c,inset 0 1px 0 #ffffff3d;
+  color:#fff;
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --glass-fill: #f5f8ffbf; --glass-filter: blur(24px) saturate(1.4); }
+  .glass--cobalt { --glass-fill: #102ec5b8; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root { --glass-fill: #f5f8ff; --glass-filter: none; --glass-border: #9aaed8; }
+  .glass--cobalt { --glass-fill: #1834ae; --glass-border: #9babef; }
+}
+.glass--lime {
+  --glass-fill: var(--lime);
+  --glass-border: #f2ffc4b9;
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass--lime { --glass-fill: #d3fa57ed; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .glass--lime { --glass-fill: var(--lime); }
+}

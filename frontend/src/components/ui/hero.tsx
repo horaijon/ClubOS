@@ -12,7 +12,7 @@ export function Hero({onDemo, busy, workspaceHref}:{onDemo:()=>void; busy:boolea
       </div>
     </div>
     <div className="hero-art" aria-hidden="true">
-      <div className="hero-run-sheet">
+      <div className="hero-run-sheet glass">
         <div className="art-label"><ClipboardList size={16}/> Event plan</div>
         <h2>Campus build night</h2>
         <div className="art-meta"><CalendarDays size={15}/> Event run sheet</div>
@@ -21,7 +21,7 @@ export function Hero({onDemo, busy, workspaceHref}:{onDemo:()=>void; busy:boolea
         <div className="art-check art-check-open"><span/> Check in participants</div>
         <div className="art-ticket-bottom"><span>ClubOS</span><i/></div>
       </div>
-      <div className="hero-funding">
+      <div className="hero-funding glass glass--lime">
         <div className="art-label"><CircleAlert size={16}/> Budget change</div>
         <strong>Sponsor withdrew</strong>
         <div className="art-recovery">Review recovery plan <MoveUpRight size={16}/></div>

@@ -16,7 +16,7 @@ function AccountForm({view,onSubmit,busy,error,session}:{
   const signup=view==='signup'
   const title=setup?'Set up your club':signup?'Create your account':'Log in to ClubOS'
   return <main className="site-entry">
-    <header className="site-entry-header"><SiteBrand/><a href="#" className="entry-return"><ArrowLeft size={16}/> Back to ClubOS</a></header>
+    <header className="site-entry-header glass glass--cobalt"><SiteBrand/><a href="#" className="entry-return"><ArrowLeft size={16}/> Back to ClubOS</a></header>
     <div className="entry-layout">
       <aside className="entry-side">
         <Building2 size={34} strokeWidth={1.5} aria-hidden="true"/>
