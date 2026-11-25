@@ -1,8 +1,10 @@
 # Three-minute demo
 
-1. Open the CodeStorm 2026 overview. Identify the 200-person registration target and the three confirmed fictional sponsors. Open Finance and compare projected funding of INR 65,000 with planned expenses of INR 60,000. Received cash is tracked separately.
-2. Create a small workshop with a date next month. Launch AI Planning and wait for the new event to open. Inspect the generated task owners, budget, sponsor matches and agent activity. Switch back to CodeStorm.
-3. In Sponsorships open Kernel Grove. Generate an outreach draft. Paste the sample response or import the included agreement PDF. Review the proposed obligations. An offer is separate from a signed agreement and from a received payment.
-4. In Risks & Recovery use the demo control for VectorForge's unpaid INR 20,000 withdrawal. Projected funding falls to INR 45,000. Against INR 60,000 of expenses the gap is INR 15,000.
-5. Inspect the recovery proposal and its actions. Approve it and inspect the updated spending plan, tasks, backup prospect and audit entries. Any remaining shortfall stays visible until actual savings or confirmed new funding cover it.
-6. Download the event PDF under Reports. Use the demo reset control before presenting again. Reset rebuilds only the seeded CodeStorm event.
+1. Open **Try the demo** and select **CodeStorm 2026**. The Command Center starts with two proposals to review. Use the event switcher to open **Build Night 2026** and return to CodeStorm.
+2. Use **New event** to create a student workshop. Watch Atlas schedule tasks, Ledger allocate the budget, Magnet prepare partner proposals, and Sentinel check feasibility in the live trace. Switch back to CodeStorm.
+3. Choose **Simulate disruption** and select VectorForge’s ₹20,000 withdrawal. Projected balance moves from a ₹5,000 surplus to a ₹15,000 deficit. Watch the specialists prepare recovery.
+4. Open **Approvals & Risks** and review the projected balance, discretionary cuts, backup drafts, and linked deliverables. Approve the plan. Refresh the page and check that the applied changes persist.
+5. In **Sponsorships**, open Kernel Grove and use **Draft outreach with Magnet**. Confirm a commitment to trigger the receivable, linked tasks, and an Echo announcement draft. Check the outcomes in **Finance & Budget** and **Tasks & Ops**.
+6. Open **AI Copilot** and select **Cut ₹8,000 without touching prizes** or **What are our biggest blockers?** Open the trace inside the drawer to inspect the tools. Export the event PDF from the Command Center.
+
+Use **Workspace settings** to reset CodeStorm before replaying the same disruption. The reset affects only CodeStorm.

@@ -1,9 +1,9 @@
 """HTTP boundary for the local demo workspace."""
 from datetime import date,timedelta
 from typing import Any,Annotated
-from fastapi import APIRouter,HTTPException
+from fastapi import APIRouter,HTTPException,Request
 from pydantic import BaseModel,Field,ConfigDict,StringConstraints,model_validator
-from . import db,engine
+from . import db,engine,trace
 from .auth import Workspace, authorize_event
 from .state import Invalid,Missing,Conflict
 
@@ -46,13 +46,14 @@ def error(exc):
 @router.get('/events')
 def events(club:Workspace):
     with db.transaction() as c:
-        return db.rows(c,'SELECT id,name FROM events WHERE club_id=? ORDER BY is_demo DESC,created_at DESC',(club['id'],))
+        return db.rows(c,"SELECT id,name FROM events WHERE club_id=? ORDER BY (id='codestorm-2026') DESC,is_demo DESC,created_at DESC",(club['id'],))
 
 @router.post('/events',status_code=201)
 def create_event(input:EventCreate,club:Workspace):
     try:
-        with db.transaction(True) as c:
-            return engine.create(c,input.model_dump(mode='json'),club['id'])
+        execution=trace.Execution(club['id'],None,None,'Create event')
+        with execution.recording(), db.transaction(True) as c:
+            return engine.create(c,input.model_dump(mode='json'),club['id'],execution)
     except Invalid as exc:raise error(exc) from exc
 
 @router.get('/events/{event_id}')
@@ -66,7 +67,17 @@ def event(event_id:str,club:Workspace):
 @router.post('/events/{event_id}/actions')
 def action(event_id:str,input:Action,club:Workspace):
     try:
-        with db.transaction(True) as c:
+        with db.transaction() as c:
             authorize_event(c,event_id,club['id'])
-            return engine.dispatch(c,event_id,input.type,input.payload,input.request_id)
+        execution=trace.Execution(club['id'],event_id,input.request_id,input.type)
+        with execution.recording(), db.transaction(True) as c:
+            authorize_event(c,event_id,club['id'])
+            return engine.dispatch(c,event_id,input.type,input.payload,input.request_id,execution)
     except Invalid as exc:raise error(exc) from exc
+
+
+@router.get('/events/{event_id}/trace')
+def event_trace(event_id:str,request:Request,club:Workspace):
+    with db.transaction() as c:
+        authorize_event(c,event_id,club['id'])
+    return trace.stream(request,club['id'],"event_id",event_id)

@@ -33,7 +33,10 @@ def test_account_setup_and_data_isolation(tmp_path, monkeypatch):
         assert client.post("/api/auth/logout").status_code == 200
         assert client.get(event_path).status_code == 401
         assert client.post("/api/auth/demo").status_code == 200
-        assert client.get("/api/events").json() == [{"id": "codestorm-2026", "name": "CodeStorm 2026"}]
+        assert client.get("/api/events").json() == [
+            {"id": "codestorm-2026", "name": "CodeStorm 2026"},
+            {"id": "build-night-2026", "name": "Build Night 2026"},
+        ]
         assert client.get(event_path).status_code == 404
         assert client.get(event_path + "/report.pdf").status_code == 404
         assert client.get("/api/jobs/" + job["job_id"]).status_code == 404

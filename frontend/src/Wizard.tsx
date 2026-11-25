@@ -6,8 +6,11 @@ import { api, saved, save, type Snapshot } from './data';
 const steps=['Event details','Resources','Planning brief'];
 function dateInput(offset:number){const d=new Date();d.setDate(d.getDate()+offset);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 type Job={status:'queued'|'running'|'completed'|'failed';id:string|null;detail:string};
+import { TraceView, useLiveTrace } from './LiveTrace';
+
 export default function Wizard({data,college,jobKey,close,complete}:{data:Snapshot|null;college:string;jobKey:string;close:()=>void;complete:(id:string)=>Promise<void>}) {
  const [step,setStep]=useState(0),[job,setJob]=useState(()=>saved(jobKey)||''),[status,setStatus]=useState(''),[error,setError]=useState(''),[posting,setPosting]=useState(false);
+ const trace=useLiveTrace(job?'/api/jobs/'+encodeURIComponent(job)+'/trace':'',undefined,true);
  const request = useRef<{body:string;key:string}|null>(null);
  const [form,setForm]=useState({name:'',type:'Hackathon',description:'',college:data?.event.college||college,venue:'',start_date:dateInput(14),end_date:dateInput(15),target:'100',initial_budget:'0',sponsorship_target:'0',members:'',goals:'',requirements:'',constraints:''});
  function change(key:keyof typeof form,value:string){setForm(f=>({...f,[key]:value,...(key==='start_date'&&value>f.end_date?{end_date:value}:{})}));}
@@ -39,7 +42,7 @@ export default function Wizard({data,college,jobKey,close,complete}:{data:Snapsh
  }
  function area(label:string,key:keyof typeof form,placeholder:string){return <label className="wide">{label}<textarea rows={2} maxLength={2000} value={form[key]} placeholder={placeholder} onChange={e=>change(key,e.target.value)}/></label>}
  return <Dialog title={job?'Event planning':'Create event'} onClose={close}>
- {job?<div className="job-view"><span className="job-icon"><Network size={31}/></span><h3>Nexus is planning your event</h3><p role="status"><LoaderCircle className="spin" size={16}/>{status||'Connecting to your planning job…'}</p><p>You can close this window and return to the planning job from the event selector.</p><button className="subtle-button" onClick={close}>Back to workspace</button></div>:<form onSubmit={submit}>
+ {job?<div className="job-view"><span className="job-icon"><Network size={31}/></span><h3>Nexus is planning your event</h3><p role="status"><LoaderCircle className="spin" size={16}/>{status||'Connecting to your planning job…'}</p><TraceView steps={trace.steps} connected={trace.connected} compact/><button className="subtle-button" onClick={close}>Back to workspace</button></div>:<form onSubmit={submit}>
  <ol className="wizard-steps">{steps.map((s,i)=><li className={i===step?'current':i<step?'done':''} key={s} aria-current={i===step?'step':undefined}><span>{i<step?<Check size={12}/>:i+1}</span>{s}</li>)}</ol>
  <div className="wizard-fields" key={step}>
  {step===0?<>{field('Event name','name',{required:true,placeholder:'e.g. Build Night 2026',wide:true})}<label>Event type<select value={form.type} onChange={e=>change('type',e.target.value)}>{['Hackathon','Workshop','Conference','Meetup','Competition','Other'].map(t=><option key={t}>{t}</option>)}</select></label>{field('College or organization','college',{required:true})}{field('Start date','start_date',{type:'date',required:true})}{field('End date','end_date',{type:'date',required:true,min:form.start_date})}{field('Venue','venue',{wide:true,placeholder:'Campus venue or online'})}{area('Description','description','What will participants do at this event?')}</>:null}

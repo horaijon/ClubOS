@@ -67,7 +67,10 @@ def owner(c,eid,dept):
     return r[0] if r else None
 
 def task(c,eid,title,dept,due,agent='Atlas',priority='Medium',status='To Do',description='',sponsor_id=None,owner_id=None):
-    return insert(c,'tasks',event_id=eid,title=title,description=description,department=dept,owner_id=owner_id or owner(c,eid,dept),due_date=due,status=status,priority=priority,sponsor_id=sponsor_id,agent=agent,created_at=now())
+    timestamp=now()
+    return insert(c,'tasks',event_id=eid,title=title,description=description,department=dept,owner_id=owner_id or owner(c,eid,dept),
+                  due_date=due,status=status,priority=priority,sponsor_id=sponsor_id,agent=agent,created_at=timestamp,
+                  completed_at=timestamp if status=='Completed' else None)
 
 def due_in(event, days):
     return min(date.today()+timedelta(days=days), iso(event['end_date'])).isoformat()
@@ -104,7 +107,8 @@ def funding(c,event):
     committed=c.execute("SELECT COALESCE(SUM(committed),0) FROM sponsors WHERE event_id=? AND stage='Confirmed'",(eid,)).fetchone()[0]
     received=c.execute("SELECT COALESCE(SUM(amount),0) FROM payments WHERE event_id=?",(eid,)).fetchone()[0]
     projected=event['initial_budget']+committed
-    return dict(planned=planned,actual=actual,committed=committed,received=received,projected_funding=projected,balance=projected-planned,cash_balance=event['initial_budget']+received-actual,shortfall=max(0,planned-projected),outstanding=committed-received)
+    exposure=sum(max(x['planned'],x['actual']) for x in amounts)
+    return dict(planned=planned,actual=actual,committed=committed,received=received,projected_funding=projected,exposure=exposure,balance=projected-exposure,cash_balance=event['initial_budget']+received-actual,shortfall=max(0,exposure-projected),outstanding=committed-received)
 
 def workspace(c,eid):
     e=get_event(c,eid)
@@ -125,20 +129,33 @@ def workspace(c,eid):
     pmap={p['id']:p for p in profiles}
     sponsors=rows(c,"""SELECT s.*,COALESCE(SUM(p.amount),0) received FROM sponsors s LEFT JOIN payments p ON p.sponsor_id=s.id WHERE s.event_id=? GROUP BY s.id ORDER BY s.rowid""",(eid,))
     deliverables=rows(c,"""SELECT d.*,t.title,t.status,t.due_date,m.name owner FROM deliverables d JOIN tasks t ON t.id=d.task_id LEFT JOIN members m ON t.owner_id=m.id WHERE d.event_id=?""",(eid,))
+    receivables={r['sponsor_id']:r for r in rows(c,
+        'SELECT r.* FROM receivables r JOIN sponsors s ON s.id=r.sponsor_id WHERE s.event_id=?',(eid,))}
+    today=date.today().isoformat()
     for s in sponsors:
         for k,v in pmap[s['prospect_id']].items():
             if k!='id': s[k]=v
+        due=receivables.get(s['id'])
+        if due:
+            outstanding=max(0,s['committed']-s['received'])
+            due.update(amount=s['committed'],received=s['received'],outstanding=outstanding,sponsor_name=s['name'],
+                       status='Withdrawn' if s['stage']=='Withdrawn' else 'Paid' if not outstanding else
+                       'Overdue' if due['due_date']<today else 'Part paid' if s['received'] else 'Open')
+        s['receivable']=due
         s['deliverables']=[d for d in deliverables if d['sponsor_id']==s['id']]
     result['sponsors']=sponsors
+    result['receivables']=list(receivables.values())
     pipeline={s['prospect_id'] for s in sponsors}
     result['prospects']=[p for p in profiles if p['id'] not in pipeline]
     today=date.today().isoformat()
     m=funding(c,e)
     m.update(registered=len(result['participants']),target=e['target'],completed=sum(t['status']=='Completed' for t in result['tasks']),total_tasks=len(result['tasks']),overdue=sum(t['due_date']<today and t['status']!='Completed' for t in result['tasks']),active_risks=sum(r['status'] not in ('Resolved','Closed') for r in result['risks']),pending_approvals=sum(a['status']=='Pending' for a in result['approvals']))
-    m['readiness']=round(35*m['completed']/max(1,m['total_tasks'])+35*min(1,m['registered']/m['target'])+30*min(1,m['projected_funding']/max(1,m['planned'])))
+    m['readiness']=round(35*m['completed']/max(1,m['total_tasks'])+35*min(1,m['registered']/m['target'])+30*min(1,m['projected_funding']/max(1,m['exposure'])))
     efforts={'Atlas':8,'Relay':5,'Sentinel':5,'Echo':10,'Magnet':12,'Ledger':8,'Nexus':2}
     m['actions']=len(result['runs'])
     m['minutes_saved']=sum(efforts.get(r['agent'],3) for r in result['runs'])
+    from .planning import TOOLS
+    result['agent_tools']={agent:sorted(tools) for agent,tools in TOOLS.items()}
     result['metrics']=m
     counts=Counter(p['created_at'][:10] for p in result['participants'])
     cumulative=0

@@ -48,7 +48,7 @@ def test_withdrawal_approval_and_idempotency(workspace):
     assert proposed["metrics"]["shortfall"] == 1_500_000
     assert proposed["metrics"]["received"] == original["metrics"]["received"]
     assert proposed["budget"] == original["budget"]
-    assert len(proposed["approvals"]) == 1
+    assert len(proposed["approvals"]) == len(original["approvals"]) + 1
     assert {"Sentinel", "Nexus", "Ledger", "Magnet", "Atlas"} <= {
         run["agent"] for run in proposed["runs"] if run["workflow_id"] == plan["workflow_id"]
     }
@@ -62,7 +62,13 @@ def test_withdrawal_approval_and_idempotency(workspace):
     assert applied["metrics"]["planned"] < proposed["metrics"]["planned"]
     assert applied["metrics"]["projected_funding"] == proposed["metrics"]["projected_funding"]
     assert len(applied["tasks"]) == len(proposed["tasks"]) + 1
-    assert len(applied["sponsors"]) == len(proposed["sponsors"]) + 1
+    backup_drafts = [a for a in proposed["approvals"][0]["actions"] if a["type"] == "backup_outreach"]
+    assert len(backup_drafts) == 2
+    assert {a["prospect_id"] for a in backup_drafts} <= {
+        s["prospect_id"] for s in applied["sponsors"] if s["stage"] == "Outreach Drafted"
+    }
+    assert all(t["status"] == "Blocked" for t in applied["tasks"] if t["sponsor_id"] and
+               t["sponsor_id"] == next(s["id"] for s in applied["sponsors"] if s["name"] == "VectorForge"))
 
     with TestClient(app) as restarted:
         assert restarted.post("/api/auth/demo").status_code == 200
@@ -136,3 +142,108 @@ def test_invalid_event_dates_and_dependency_cycle(workspace):
     task = event.snapshot()["tasks"][0]
     event.action("update_task",{"task_id":task["id"],"dependencies":[task["id"]]},expected=422)
     assert event.snapshot()["tasks"][0] == task
+
+
+def test_bootstrap_stream_persists_scoped_specialist_steps(workspace):
+    import json
+    from clubos import trace
+    from clubos.seed import CLUB
+
+    response = workspace.post("/api/planning-jobs", json={
+        "name": "Embedded Systems Lab", "type": "Hardware workshop", "target": 80,
+        "initial_budget": 500_000, "sponsorship_target": 800_000, "goals": "Build low-power sensor projects."
+    })
+    assert response.status_code == 202, response.text
+    job = response.json()["job_id"]
+    feed = workspace.get(f"/api/jobs/{job}/trace")
+    assert feed.headers["content-type"].startswith("text/event-stream")
+    entries = [json.loads(line[6:]) for line in feed.text.splitlines() if line.startswith("data: ")]
+    assert entries[0]["agent_name"] == "Nexus"
+    assert entries[-2]["kind"] == "state_updated"
+    assert entries[-1]["kind"] == "run_completed"
+    assert {"Atlas", "Ledger", "Magnet", "Sentinel"} <= {
+        row["agent_name"] for row in entries if row["kind"] == "handoff"
+    }
+    assert all(row["parent_run_id"] == entries[0]["run_id"] for row in entries if row["kind"] == "tool_called")
+    assert any(row["latency_ms"] is not None for row in entries if row["kind"] == "tool_finished")
+    event_id = workspace.get(f"/api/jobs/{job}").json()["id"]
+    assert trace.entries(CLUB, "event_id", event_id) == entries
+    data = Event(workspace, event_id).snapshot()
+    assert data["metrics"]["planned"] == 1_300_000
+    assert len([s for s in data["sponsors"] if s["stage"] == "Shortlisted" and s["draft"]]) == 2
+    assert any(task["dependencies"] for task in data["tasks"])
+    assert workspace.post("/api/auth/logout").status_code == 200
+    assert workspace.get(f"/api/jobs/{job}/trace").status_code == 401
+
+
+def test_confirmation_opens_receivable_and_saves_linked_work(workspace):
+    from clubos import trace
+    from clubos.seed import CLUB
+
+    event = Event(workspace)
+    initial = event.snapshot()
+    partner = next(s for s in initial["sponsors"] if s["name"] == "Kernel Grove")
+    event.action("sponsor_stage", {"sponsor_id": partner["id"], "stage": "Confirmed", "amount": 1_000_000},
+                 request_id="confirm-kernel")
+    final = event.snapshot()
+    partner = next(s for s in final["sponsors"] if s["id"] == partner["id"])
+    assert partner["stage"] == "Confirmed"
+    assert partner["receivable"]["outstanding"] == 1_000_000
+    assert partner["receivable"]["status"] == "Open"
+    assert len(partner["deliverables"]) == 2
+    linked = [t for t in final["tasks"] if t["sponsor_id"] == partner["id"]]
+    assert sum(len(t["dependencies"]) for t in linked) == 1
+    assert any(d["title"] == "Welcome Kernel Grove" for d in final["marketing"])
+    assert final["metrics"]["committed"] - initial["metrics"]["committed"] == 1_000_000
+    assert final["metrics"]["cash_balance"] == initial["metrics"]["cash_balance"]
+    assert {"create_sponsor_receivable", "create_task", "draft_campaign"} <= {
+        step["tool_name"] for step in trace.entries(CLUB, "event_id", event.id)
+        if step["request_id"] == "confirm-kernel" and step["kind"] == "tool_finished"
+    }
+
+
+def test_overrun_and_copilot_proposals_are_editable_and_persisted(workspace):
+    event = Event(workspace)
+    initial = event.snapshot()
+    assert initial["metrics"]["pending_approvals"] == 2
+    assert len(initial["registration_history"]) == 14
+    assert len({t["completed_at"][:10] for t in initial["tasks"] if t["completed_at"]}) > 2
+    result = event.action("demo_overrun")
+    proposed = event.snapshot()
+    assert proposed["metrics"]["actual"] == initial["metrics"]["actual"] + 1_200_000
+    assert proposed["metrics"]["shortfall"] > 0
+    assert proposed["metrics"]["planned"] == initial["metrics"]["planned"]
+    event.action("demo_overrun", expected=409)
+    event.action("reject", {"approval_id": result["approval_id"]})
+    result = event.action("copilot", {"question": "Cut ₹8k without touching prizes"})
+    approval = next(a for a in event.snapshot()["approvals"] if a["id"] == result["approval_id"])
+    cuts = [a for a in approval["actions"] if a["type"] == "reduce_budget"]
+    assert sum(a["saving"] for a in cuts) == 800_000
+    prizes = next(b for b in proposed["budget"] if b["category"] == "Prizes")
+    assert prizes["id"] not in {a["category_id"] for a in cuts}
+    event.action("edit_approval", {"approval_id": approval["id"], "index": 0, "amount": cuts[0]["saving"] - 100})
+    event.action("approve", {"approval_id": approval["id"]})
+    assert event.snapshot()["metrics"]["planned"] == initial["metrics"]["planned"] - 799_900
+    followups = event.action("copilot", {"question": "Follow up with all contacted sponsors who haven’t replied"})
+    assert followups["approval_id"]
+    assert "Northloop Coffee" in followups["text"]
+    blockers = event.action("copilot", {"question": "What are the biggest blockers?"})
+    assert "Venue" in blockers["text"]
+
+
+def test_provider_failure_uses_local_drafts_for_rest_of_recovery(workspace, monkeypatch):
+    from clubos import intelligence
+
+    attempts = []
+
+    def unavailable(agent, context, fallback):
+        attempts.append(agent)
+        return {"text": fallback, "mode": "Deterministic fallback", "detail": "Rate limited"}
+
+    monkeypatch.setattr(intelligence, "advise", unavailable)
+    event = Event(workspace)
+    result = event.action("demo_withdraw")
+    assert result["mode"] == "Deterministic fallback"
+    assert attempts == ["Magnet"]
+    proposal = next(a for a in event.snapshot()["approvals"] if a["id"] == result["approval_id"])
+    assert len([a for a in proposal["actions"] if a["type"] == "backup_outreach" and a["text"]]) == 2

@@ -12,41 +12,70 @@ def existing(flow,fingerprint):
         WHERE r.event_id=? AND r.fingerprint=? ORDER BY a.rowid DESC LIMIT 1""",(flow.id,fingerprint)).fetchone()
     return dict(r) if r else None
 
-def optimize(flow,source='Budget review'):
+def optimize(flow,source='Budget review',*,requested=0,protected=(),previous=None,withdrawn=None):
     c,e=flow.c,flow.e
-    facts=funding(c,e)
-    gap=facts['shortfall']
-    if gap==0:
-        flow.log('Ledger','project_balance',f'Projected surplus of {currency(facts["balance"])}. No deficit to recover.')
+    with flow.tool('Sentinel','detect') as step:
+        facts=funding(c,e)
+        gap=facts['shortfall']
+        step.update(summary=f'Projected balance: {currency(facts["balance"])}.',output=facts)
+    if not gap and not requested and not withdrawn:
         return dict(message='Funding covers the current plan.',shortfall=0)
-    cached=existing(flow,'funding-gap')
-    if cached and cached['approval_id']:
-        prior=scoped(c,'approvals',cached['approval_id'],flow.id)
-        if prior['status']=='Pending': return dict(message='The funding plan is already awaiting review.',**cached,shortfall=gap)
-    risk=flow.risk('funding-gap','Projected funding shortfall',f'{source} leaves {currency(facts["projected_funding"])} secured against {currency(facts["planned"])} of planned expenses.','High',f'{currency(gap)} shortfall','Review discretionary allocations, contact a backup partner and verify the revised plan.',['Sentinel','Nexus','Ledger','Magnet','Atlas','Relay'])
-    flow.log('Sentinel','detect',f'Detected a {currency(gap)} projected shortfall.')
-    flow.log('Nexus','dispatch','Dispatched finance, sponsorship, planning and operations reviews.')
+    risk=None
+    if gap and not requested:
+        cached=existing(flow,'funding-gap')
+        if cached and cached['approval_id']:
+            prior=scoped(c,'approvals',cached['approval_id'],flow.id)
+            if prior['status']=='Pending':
+                c.execute("UPDATE approvals SET status='Superseded',decided_at=? WHERE id=?",(now(),prior['id']))
+        impact=f'{currency(previous)} → {currency(facts["balance"])} projected balance.' if previous is not None else f'{currency(gap)} shortfall.'
+        risk=flow.risk('funding-gap','Projected funding shortfall',
+            f'{source} leaves {currency(facts["projected_funding"])} secured against {currency(facts["exposure"])} in planned or incurred costs.',
+            'High',impact,'Review discretionary allocations and backup sponsor drafts.',['Sentinel','Nexus','Ledger','Magnet','Atlas'])
+    target=requested or gap
     actions=[]
-    remaining=gap
-    for b in sorted(budgets(c,flow.id),key=lambda b:-b['adjustable']):
-        saving=min(remaining,b['adjustable'],max(0,b['planned']-b['actual']))
-        if saving<=0: continue
-        actions.append(dict(type='reduce_budget',title=f'Reduce {b["category"].lower()} by {currency(saving)}',category_id=b['id'],before=b['planned'],after=b['planned']-saving,saving=saving))
-        remaining-=saving
-    flow.log('Ledger','project_balance',f'Identified {currency(gap-remaining)} in unspent adjustable allocations. Remaining funding need: {currency(remaining)}.')
-    used={r[0] for r in c.execute('SELECT prospect_id FROM sponsors WHERE event_id=?',(flow.id,))}
-    backup=next((p for p in prospects(c,e) if p['id'] not in used),None)
-    if backup and remaining:
-        body=f'Hello {backup["name"]} team,\n\nWe are organizing {e["name"]} for {e["target"]} students. {backup["reason"]} Would you consider a partnership of {currency(remaining)}? We would welcome a conversation about benefits that suit your team.\n\n{e["club"]}'
-        actions.append(dict(type='backup_outreach',title=f'Draft {currency(remaining)} backup request for {backup["name"]}',prospect_id=backup['id'],text=body,target=remaining))
-    flow.log('Magnet','rank_sponsors',f'{backup["name"]} is the highest-ranked available backup.' if backup else 'No new backup profiles remain.')
-    tasks=[t for t in task_rows(c,flow.id) if t['status']!='Completed' and t['department'] in ('Finance','Operations')]
-    actions.append(dict(type='create_task',title='Review revised vendor orders and delivery scope',department='Operations',due_date=due_in(e,2),priority='High'))
-    flow.log('Atlas','trace_dependencies',f'Reviewed {len(tasks)} open finance and operations tasks for the revised budget.')
-    flow.log('Relay','work_checklist','Prepared a vendor review task for the operations team.')
-    advice=flow.consult('Nexus','consolidate',{'secured_paise':facts['projected_funding'],'shortfall_paise':gap,'possible_savings_paise':gap-remaining,'remaining_gap_paise':remaining},f'Approve {currency(gap-remaining)} in allocation reductions. {currency(remaining)} would still need funding. Backup outreach creates a draft only.')
-    aid=flow.approval('Recover the funding shortfall',advice['text'],actions,risk)
-    return dict(message='Recovery plan is ready for review.',risk_id=risk,approval_id=aid,shortfall=gap)
+    remaining=target
+    with flow.tool('Ledger','project_balance',dict(target=target,protected=sorted(protected))) as step:
+        for b in sorted(budgets(c,flow.id),key=lambda b:-b['adjustable']):
+            if b['category'].lower() in protected:continue
+            saving=min(remaining,b['adjustable'],max(0,b['planned']-b['actual']))
+            if saving<=0:continue
+            actions.append(dict(type='reduce_budget',title=f'Reduce {b["category"].lower()} by {currency(saving)}',
+                category_id=b['id'],before=b['planned'],after=b['planned']-saving,saving=saving))
+            remaining-=saving
+        step.update(summary=f'Found {currency(target-remaining)} in unspent adjustable allocations.',
+                    output=dict(savings=target-remaining,balance_after=facts['balance']+target-remaining))
+    if remaining and gap and not requested:
+        stages={r[0]:r[1] for r in c.execute('SELECT prospect_id,stage FROM sponsors WHERE event_id=?',(flow.id,))}
+        with flow.tool('Magnet','rank_sponsors') as step:
+            available=[p for p in prospects(c,e) if stages.get(p['id']) in (None,'Shortlisted','Identified')]
+            backups=sorted(available,key=lambda p:stages.get(p['id'])!='Shortlisted')[:2]
+            step.update(summary=f'Selected {len(backups)} eligible backup partners.',output=dict(partners=[p['name'] for p in backups]))
+        for index,partner in enumerate(backups):
+            amount=remaining//len(backups)+(index<remaining%len(backups))
+            if not amount:continue
+            body=f'Hello {partner["name"]} team,\n\n{e["name"]} expects {e["target"]} students. {partner["reason"]} Could we discuss a {currency(amount)} partnership before {e["start_date"]}?\n\n{e["club"]}'
+            draft=flow.consult('Magnet','draft_outreach',dict(partner=partner['name'],audience=e['target'],
+                event_name=e['name'],theme=e['goals'],amount=amount,start=e['start_date']),body)
+            actions.append(dict(type='backup_outreach',title=f'Draft {currency(amount)} request for {partner["name"]}',
+                                prospect_id=partner['id'],text=draft['text'],target=amount))
+    if (gap and not requested) or withdrawn:
+        with flow.tool('Atlas','revise_deliverables',dict(sponsor_id=withdrawn)) as step:
+            blocked=[t for t in task_rows(c,flow.id) if withdrawn and t['sponsor_id']==withdrawn and t['status'] not in ('Completed','Blocked')]
+            actions.extend(dict(type='pause_deliverable',title=f'Pause {t["title"]}',task_id=t['id'],before=t['status'],after='Blocked') for t in blocked)
+            actions.append(dict(type='create_task',title='Review revised vendor orders and delivery scope',
+                                department='Operations',due_date=due_in(e,2),priority='High'))
+            step.update(summary=f'Prepared {len(blocked)} deliverable changes and a vendor review.',output=dict(tasks=[t['id'] for t in blocked]))
+    after=facts['balance']+target-remaining
+    summary=f'Projected balance: {currency(facts["balance"])} → {currency(after)}. Proposed savings: {currency(target-remaining)}.'
+    if remaining:summary+=f' {currency(remaining)} of the requested adjustment remains uncovered.'
+    if any(a['type']=='backup_outreach' for a in actions):summary+=' Backup drafts do not count toward funding.'
+    if not actions:return dict(message=summary,text=summary,shortfall=gap,mode='deterministic')
+    review=flow.consult('Nexus','review_proposal',dict(balance=facts['balance'],balance_after=after,
+        possible_savings=target-remaining,remaining=remaining,protected=sorted(protected)),summary)
+    description=summary if review['text']==summary else summary+' '+review['text']
+    aid=flow.approval('Review budget reductions' if requested else 'Recover the funding shortfall',description,actions,risk,facts['balance'])
+    return dict(message='Recovery plan is ready for review.',text=summary,risk_id=risk,approval_id=aid,shortfall=gap,
+                mode=review['mode'],before=facts['balance'],after=after)
 
 def delay(flow,tid,days):
     c=flow.c
@@ -109,36 +138,68 @@ def deadline(flow,d):
     flow.note('Sponsor fulfilment reminder',impact,'Relay')
     return dict(risk_id=risk)
 
-def execute(flow,a):
+def execute(flow,a,defaults=True):
     c,eid=flow.c,flow.id
     kind=a['type']
     if kind=='reduce_budget':
         b=scoped(c,'budget',a['category_id'],eid)
         spent=c.execute('SELECT COALESCE(SUM(amount),0) FROM expenses WHERE category_id=?',(b['id'],)).fetchone()[0]
         if b['planned']!=a['before'] or a['after']<spent:raise Conflict('An allocation changed. Reject this plan and run a new budget review.')
-        c.execute('UPDATE budget SET planned=?,adjustable=MAX(0,adjustable-?) WHERE id=?',(a['after'],a['saving'],b['id']))
+        if a['saving']>b['adjustable']:raise Conflict('The remaining adjustable amount changed.')
+        with flow.tool('Ledger','update_budget_allocation',dict(category=b['category'],before=a['before'])) as step:
+            c.execute('UPDATE budget SET planned=?,adjustable=adjustable-? WHERE id=?',(a['after'],a['saving'],b['id']))
+            step.update(summary=a['title'],output=dict(after=a['after'],saving=a['saving']))
+    elif kind=='reallocate_budget':
+        source=scoped(c,'budget',a['category_id'],eid)
+        destination=scoped(c,'budget',a['destination_id'],eid)
+        current=next(b for b in budgets(c,eid) if b['id']==source['id'])
+        if (source['planned']!=a['before'] or destination['planned']!=a['destination_before'] or
+                a['after']<current['actual'] or a['amount']>source['adjustable']):
+            raise Conflict('The allocations changed. Review a new plan.')
+        with flow.tool('Ledger','update_budget_allocation',dict(category=source['category'],before=a['before'])) as step:
+            c.execute('UPDATE budget SET planned=?,adjustable=adjustable-? WHERE id=?',(a['after'],a['amount'],source['id']))
+            c.execute('UPDATE budget SET planned=? WHERE id=?',(a['destination_after'],destination['id']))
+            step.update(summary=a['title'],output=dict(after=a['after'],destination_after=a['destination_after']))
     elif kind=='backup_outreach':
-        if c.execute('SELECT 1 FROM sponsors WHERE event_id=? AND prospect_id=?',(eid,a['prospect_id'])).fetchone():
-            raise Conflict('Backup partner is already in the pipeline. Request a new recovery plan.')
-        insert(c,'sponsors',event_id=eid,prospect_id=a['prospect_id'],stage='Outreach Drafted',draft=a['text'])
+        sponsor=c.execute('SELECT id,stage FROM sponsors WHERE event_id=? AND prospect_id=?',(eid,a['prospect_id'])).fetchone()
+        if sponsor and sponsor['stage'] not in ('Shortlisted','Identified'):
+            raise Conflict('A backup partner progressed in the pipeline. Request a new recovery plan.')
+        with flow.tool('Magnet','draft_outreach',dict(prospect_id=a['prospect_id'])) as step:
+            if sponsor:
+                sid=sponsor['id']
+                c.execute("UPDATE sponsors SET stage='Outreach Drafted',draft=? WHERE id=?",(a['text'],sid))
+            else:
+                sid=insert(c,'sponsors',event_id=eid,prospect_id=a['prospect_id'],stage='Outreach Drafted',draft=a['text'])
+            insert(c,'communications',event_id=eid,sponsor_id=sid,kind='outreach',text=a['text'],created_at=now())
+            step.update(summary=a['title'],output=dict(sponsor_id=sid))
     elif kind=='create_task':
-        task(c,eid,a['title'],a['department'],a['due_date'],'Atlas',a.get('priority','Medium'),sponsor_id=a.get('sponsor_id'))
+        with flow.tool('Atlas','create_task',dict(department=a['department'])) as step:
+            tid=task(c,eid,a['title'],a['department'],a['due_date'],'Atlas',a.get('priority','Medium'),sponsor_id=a.get('sponsor_id'))
+            step.update(summary=a['title'],output=dict(task_id=tid))
+    elif kind=='pause_deliverable':
+        t=scoped(c,'tasks',a['task_id'],eid)
+        if t['status']!=a['before']:raise Conflict('A sponsor deliverable changed. Review an updated plan.')
+        with flow.tool('Atlas','revise_deliverables',dict(task_id=t['id'],before=t['status'])) as step:
+            c.execute("UPDATE tasks SET status='Blocked' WHERE id=?",(t['id'],))
+            step.update(summary=a['title'],output=dict(status='Blocked'))
     elif kind=='move_deadline':
         t=scoped(c,'tasks',a['task_id'],eid)
         if t['due_date']!=a['before'] or t['status']=='Completed':raise Conflict('A task changed after this proposal. Review a new timeline.')
-        c.execute('UPDATE tasks SET due_date=? WHERE id=?',(a['after'],t['id']))
+        with flow.tool('Atlas','trace_dependencies',dict(task_id=t['id'],due_date=t['due_date'])) as step:
+            c.execute('UPDATE tasks SET due_date=? WHERE id=?',(a['after'],t['id']))
+            step.update(summary=a['title'],output=dict(due_date=a['after']))
         flow.note('Task deadline revised',f'{t["title"]} is now due {a["after"]}.','Atlas')
     elif kind=='campaign':
-        insert(c,'marketing',event_id=eid,title=a['title'],channel=a['channel'],body=a['body'],scheduled_date=a['scheduled_date'])
+        with flow.tool('Echo','draft_campaign',dict(channel=a['channel'])) as step:
+            key=insert(c,'marketing',event_id=eid,title=a['title'],channel=a['channel'],body=a['body'],scheduled_date=a['scheduled_date'])
+            step.update(summary=a['title'],output=dict(campaign_id=key))
     elif kind in ('confirm','negotiate','deliverable','payment_task','draft_review'):
         s=scoped(c,'sponsors',a['sponsor_id'],eid)
         if kind in ('confirm','negotiate'):
             if s['stage']!=a['before_stage'] or s['committed']!=a['before_amount']:raise Conflict('Sponsor terms have changed. Review a fresh proposal.')
             if kind=='confirm':
-                paid=c.execute('SELECT COALESCE(SUM(amount),0) FROM payments WHERE sponsor_id=?',(s['id'],)).fetchone()[0]
-                if a['amount']<paid: raise Conflict('The agreement cannot reduce a commitment below recorded payments.')
-                c.execute("UPDATE sponsors SET stage='Confirmed',committed=?,follow_up_date=NULL WHERE id=?",(a['amount'],s['id']))
-                flow.log('Ledger','review_terms',f'Approved commitment of {currency(a["amount"])}. No receipt recorded.')
+                from .sponsorship import confirm,sponsor
+                confirm(flow,sponsor(flow,s["id"]),a['amount'],a.get('due_date'),defaults)
             else: c.execute("UPDATE sponsors SET stage='Negotiating',follow_up_date=NULL WHERE id=?",(s['id'],))
         elif kind in ('deliverable','payment_task'):
             found=c.execute('SELECT id FROM tasks WHERE event_id=? AND sponsor_id=? AND title=?',(eid,s['id'],a['title'])).fetchone()
@@ -161,7 +222,10 @@ def decide(flow,p,approve):
     if record['status']!='Pending': raise Conflict('This request already has a decision.')
     actions=json.loads(record['actions'])
     if approve:
-        for a in actions: execute(flow,a)
+        if record['basis_balance'] is not None and funding(c,flow.e)['balance']!=record['basis_balance']:
+            raise Conflict('The projected balance changed. Reject this plan and request a fresh review.')
+        custom={a['sponsor_id'] for a in actions if a['type']=='deliverable'}
+        for a in actions:execute(flow,a,a.get('sponsor_id') not in custom)
         if any(a['type']=='move_deadline' for a in actions):
             from .operations import validate_graph
             validate_graph(task_rows(c,flow.id))
@@ -174,3 +238,42 @@ def decide(flow,p,approve):
         c.execute('UPDATE risks SET status=? WHERE id=?',('Monitoring' if residual else 'Resolved',r['id']))
     flow.note(f'{record["title"]} · {status.lower()}',f'{len(actions) if approve else 0} actions executed.')
     return dict(message=f'Plan {status.lower()}.',status=status)
+
+def edit(flow,p):
+    record=scoped(flow.c,'approvals',p.get('approval_id'),flow.id)
+    if record['status']!='Pending':raise Conflict('Only pending proposals can be edited.')
+    if record['basis_balance'] is not None and funding(flow.c,flow.e)['balance']!=record['basis_balance']:
+        raise Conflict('The projected balance changed. Request a fresh review.')
+    actions=json.loads(record['actions'])
+    i=number(p.get('index'),'Action index',0,len(actions)-1)
+    a=actions[i]
+    if a['type'] in ('reduce_budget','reallocate_budget'):
+        b=next(b for b in budgets(flow.c,flow.id) if b['id']==a['category_id'])
+        if b['planned']!=a['before']:raise Conflict('The allocation changed. Request a new plan.')
+        amount=number(p.get('amount'),'Adjustment',1,min(b['adjustable'],b['planned']-b['actual']))
+        a['after']=a['before']-amount
+        if a['type']=='reduce_budget':
+            a.update(saving=amount,title=f'Reduce {b["category"].lower()} by {currency(amount)}')
+        else:
+            destination=scoped(flow.c,'budget',a['destination_id'],flow.id)
+            a.update(amount=amount,destination_after=a['destination_before']+amount,
+                     title=f'Move {currency(amount)} from {b["category"]} to {destination["category"]}')
+    elif a['type']=='backup_outreach' or a['type']=='campaign':
+        from .state import required
+        a['text' if a['type']=='backup_outreach' else 'body']=required(p,'text',16000)
+    elif a['type']=='move_deadline':
+        value=iso(p.get('date')).isoformat()
+        if value>flow.e['end_date']:raise Invalid('Choose a deadline within the event window.')
+        a['after']=value
+        a['title']=scoped(flow.c,'tasks',a['task_id'],flow.id)['title']+' → '+value
+    else:
+        raise Invalid('This action has no editable fields.')
+    from .db import encode
+    description=record['description']
+    if a['type']=='reduce_budget':
+        current=funding(flow.c,flow.e)['balance']
+        savings=sum(x['saving'] for x in actions if x['type']=='reduce_budget')
+        description=f'Projected balance: {currency(current)} → {currency(current+savings)}. Proposed savings: {currency(savings)}.'
+    flow.c.execute('UPDATE approvals SET actions=?,description=? WHERE id=?',(encode(actions),description,record['id']))
+    flow.log('Nexus','review_proposal',f'Updated proposed action: {a["title"]}.')
+    return dict(message='Proposal updated.',approval_id=record['id'])

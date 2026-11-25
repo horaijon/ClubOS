@@ -34,7 +34,9 @@ def edit_task(f,p,update):
     if not isinstance(description,str) or len(description)>4000:raise Invalid('Task notes must be under 4,000 characters.')
     if update:
         tid=old['id']
-        c.execute('UPDATE tasks SET title=?,department=?,due_date=?,priority=?,status=?,owner_id=?,description=? WHERE id=?',(title,dept,d.isoformat(),priority,status,owner_id,description,tid))
+        completed=(old['completed_at'] or now()) if status=='Completed' else None
+        c.execute('UPDATE tasks SET title=?,department=?,due_date=?,priority=?,status=?,owner_id=?,description=?,completed_at=? WHERE id=?',
+                  (title,dept,d.isoformat(),priority,status,owner_id,description,completed,tid))
     else:
         tid=task(c,f.id,title,dept,d.isoformat(),'Organizer',priority,status,description,owner_id=owner_id)
     if 'dependencies' in p:
@@ -46,7 +48,7 @@ def edit_task(f,p,update):
             scoped(c,'tasks',dep,f.id)
             c.execute('INSERT INTO dependencies VALUES (?,?)',(tid,dep))
     validate_graph(task_rows(c,f.id))
-    if status=='Completed':
+    if status=='Completed' or d>=date.today():
         c.execute("UPDATE risks SET status='Resolved' WHERE event_id=? AND fingerprint=?", (f.id,'overdue:'+tid))
     f.note('Task updated' if update else 'Task created',title,'Atlas')
     return dict(message='Task saved.',task_id=tid)
@@ -83,15 +85,23 @@ def expense(f,p,update):
     cat=scoped(f.c,'budget',fields.get('category_id'),f.id)
     amt=number(fields.get('amount'),'Expense',1)
     desc=required(fields,'description',1000)
-    if update:f.c.execute('UPDATE expenses SET category_id=?,amount=?,description=? WHERE id=?',(cat['id'],amt,desc,old['id']))
-    else:insert(f.c,'expenses',event_id=f.id,category_id=cat['id'],amount=amt,description=desc,created_at=now())
-    actual=f.c.execute('SELECT SUM(amount) FROM expenses WHERE category_id=?',(cat['id'],)).fetchone()[0]
+    before=funding(f.c,f.e)
+    with f.tool('Ledger','record_expense',dict(category=cat['category'],amount=amt)) as step:
+        if update:f.c.execute('UPDATE expenses SET category_id=?,amount=?,description=? WHERE id=?',(cat['id'],amt,desc,old['id']))
+        else:insert(f.c,'expenses',event_id=f.id,category_id=cat['id'],amount=amt,description=desc,created_at=now())
+        actual=f.c.execute('SELECT SUM(amount) FROM expenses WHERE category_id=?',(cat['id'],)).fetchone()[0]
+        step.update(summary=f'Recorded {recovery.currency(amt)} in {cat["category"]}.',output=dict(actual=actual))
     if actual>cat['planned']:
         f.risk('overspend:'+cat['id'],f'{cat["category"]} allocation exceeded',desc,'High',recovery.currency(actual-cat['planned'])+' over allocation','Review vendor charges and future discretionary expenses.',['Ledger','Sentinel'])
         f.log('Sentinel','detect',f'{cat["category"]} has exceeded its approved allocation.')
     else:
         f.c.execute("UPDATE risks SET status='Resolved' WHERE event_id=? AND fingerprint=?",(f.id,'overspend:'+cat['id']))
     f.note('Expense updated' if update else 'Expense recorded',desc,'Ledger')
+    after=funding(f.c,f.e)
+    if after['shortfall']>before['shortfall']:
+        return recovery.optimize(f,'Expense recorded',previous=before['balance'])
+    if not after['shortfall']:
+        f.c.execute("UPDATE risks SET status='Resolved' WHERE event_id=? AND fingerprint='funding-gap'",(f.id,))
     return dict(message='Expense saved.')
 
 def campaign(f,p,generate):
@@ -133,13 +143,27 @@ def copilot(f,p):
     lower=q.lower()
     m=funding(f.c,f.e)
     ts=task_rows(f.c,f.id)
+    f.log('Nexus','query_event_state',f'Loaded event funding, open work and risks for {f.e["name"]}.')
     context={'question':q}
-    if re.search('proposal|follow.up',lower):
+    if re.search(r'follow.up',lower):
         from .sponsorship import draft
-        stage='Contacted' if 'follow' in lower else 'Negotiating'
-        r=f.c.execute('SELECT id FROM sponsors WHERE event_id=? ORDER BY (stage=?) DESC,rowid LIMIT 1',(f.id,stage)).fetchone()
+        selected=rows(f.c,"""SELECT s.id,p.name FROM sponsors s JOIN profiles p ON p.id=s.prospect_id
+            WHERE s.event_id=? AND s.stage='Contacted' AND NOT EXISTS
+            (SELECT 1 FROM communications c WHERE c.sponsor_id=s.id AND c.kind='response') ORDER BY s.rowid""",(f.id,))
+        if not selected:return dict(message='No unanswered contacted sponsors.',text='No contacted sponsors are awaiting a reply.')
+        if 'all' not in lower:selected=selected[:1]
+        actions=[]
+        for sponsor in selected:
+            result=draft(f,{'sponsor_id':sponsor['id']},'followup')
+            actions.append(dict(type='draft_review',title=f'Review follow-up to {sponsor["name"]}',sponsor_id=sponsor['id'],text=result['text']))
+        aid=f.approval('Review sponsor follow-ups','Review the drafts before sending them to the partners.',actions)
+        return dict(message='Follow-ups queued for review.',approval_id=aid,
+                    text=f'Prepared {len(actions)} follow-up drafts for '+', '.join(s['name'] for s in selected)+'.',mode=result['mode'])
+    if 'proposal' in lower:
+        from .sponsorship import draft
+        r=f.c.execute("SELECT id FROM sponsors WHERE event_id=? AND stage IN ('Negotiating','Shortlisted') ORDER BY (stage='Negotiating') DESC,rowid LIMIT 1",(f.id,)).fetchone()
         if r:
-            result=draft(f,{'sponsor_id':r[0]},'followup' if 'follow' in lower else 'proposal')
+            result=draft(f,{'sponsor_id':r[0]},'proposal')
             return dict(message='Prepared a draft in Sponsorships.',text=result['text'],mode=result['mode'])
     if 'assign' in lower and 'marketing' in lower:
         selected=[t for t in ts if t['department']=='Marketing' and t['status']!='Completed']
@@ -148,14 +172,16 @@ def copilot(f,p):
             actions=[dict(type='assign',title=f'Reassign {t["title"]}',task_id=t['id'],owner_id=assignee) for t in selected]
             aid=f.approval('Review marketing assignments','Assign open marketing work to the available marketing owner.',actions)
             return dict(message='Assignment review queued.',approval_id=aid,text=f'{len(actions)} marketing assignments are ready for approval.',mode='Deterministic')
-    if re.search('budget|expenses|funding|cost|reduc',lower):
+    if re.search(r'budget|expenses|funding|cost|reduc|\bcut\b|rebalanc',lower):
         agent='Ledger'
         context['finance']=m
-        match=re.search(r'(?:₹|inr\s*|rs\.?\s*)([\d,]+(?:\.\d{1,2})?)',lower)
-        if match and re.search('reduc|less|cut',lower):
+        match=re.search(r'(?:₹|inr\s*|rs\.?\s*|\bcut\s+)([\d,]+(?:\.\d{1,2})?)\s*(k\b|lakh\b)?',lower)
+        if match and re.search('reduc|less|cut|rebalanc|sav',lower):
             from decimal import Decimal
-            delta=int(Decimal(match[1].replace(',',''))*100)
-            text=f'Reducing secured funding by {recovery.currency(delta)} would put projected funding at {recovery.currency(m["projected_funding"]-delta)}. The resulting balance would be {recovery.currency(m["balance"]-delta)}.'
+            delta=int(Decimal(match[1].replace(',',''))*100*{None:1,'k':1000,'lakh':100_000}[match[2]])
+            protected={b['category'].lower() for b in budgets(f.c,f.id)
+                       if 'without' in lower and b['category'].lower() in lower.split('without',1)[1]}
+            return recovery.optimize(f,'Copilot budget review',requested=number(delta,'Savings target',1),protected=protected)
         else:
             b=budgets(f.c,f.id)
             flexible=sum(min(i['adjustable'],max(0,i['planned']-i['actual'])) for i in b)
@@ -165,16 +191,16 @@ def copilot(f,p):
         selected=[t['title'] for t in ts if t['status']!='Completed' and ('overdue' not in lower or t['due_date']<date.today().isoformat())]
         context['tasks']=selected[:15]
         text=f'{len(selected)} matching tasks. '+', '.join(selected[:8]) if selected else 'No overdue tasks are recorded for this event.'
-    elif re.search('sponsor|risk|commitment',lower):
+    elif re.search('sponsor|risk|commitment|blocker',lower):
         agent='Sentinel'
-        risk=rows(f.c,"SELECT title,impact FROM risks WHERE event_id=? AND status<>'Resolved'",(f.id,))
+        risk=rows(f.c,"SELECT title,impact FROM risks WHERE event_id=? AND status NOT IN ('Resolved','Closed') ORDER BY CASE severity WHEN 'High' THEN 0 WHEN 'Medium' THEN 1 ELSE 2 END,created_at DESC",(f.id,))
         context['risks']=risk
         text='Open risks: '+('; '.join(r['title']+' — '+r['impact'] for r in risk) or 'none recorded.')
     else:
         agent='Nexus'
         context['finance']=m
         context['open_tasks']=sum(t['status']!='Completed' for t in ts)
-        text=f'{f.e["name"]} has {context["open_tasks"]} open tasks and a projected balance of {recovery.currency(m["balance"])}. Open Reports for the current event summary.'
+        text=f'{f.e["name"]} has {context["open_tasks"]} open tasks and a projected balance of {recovery.currency(m["balance"])}. See Command Center for the current event summary.'
     tool={'Ledger':'project_balance','Atlas':'trace_dependencies','Sentinel':'scan','Nexus':'answer'}[agent]
     out=f.consult(agent,tool,context,text)
     return dict(message='Copilot answered.',**out)

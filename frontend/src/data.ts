@@ -11,7 +11,7 @@ export interface EventRecord {
   target: number; initial_budget: number; sponsorship_target: number; club: string; college: string; is_demo: boolean; goals: string;
 }
 export interface Metrics {
-  planned: number; actual: number; committed: number; received: number; projected_funding: number; balance: number;
+  planned: number; exposure: number; actual: number; committed: number; received: number; projected_funding: number; balance: number;
   cash_balance: number; shortfall: number; outstanding: number; registered: number; target: number; completed: number;
   total_tasks: number; overdue: number; active_risks: number; pending_approvals: number; readiness: number; actions: number; minutes_saved: number;
 }

@@ -17,7 +17,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
-from . import api, auth, db, engine
+from . import api, auth, db, engine, trace
 from .seed import CLUB
 from .reports import event_report
 
@@ -29,8 +29,7 @@ def sweep():
         ids = [r[0] for r in conn.execute("SELECT id FROM events")]
     for event_id in ids:
         try:
-            with db.transaction(write=True) as conn:
-                engine.tick(conn,event_id)
+            engine.tick(event_id)
         except Exception:
             logger.exception("Reminder sweep failed for an event")
 
@@ -44,6 +43,8 @@ async def reminders():
 @asynccontextmanager
 async def lifespan(app):
     db.init_db()
+    trace.initialize()
+    trace.import_seed_history()
     with db.transaction(write=True) as conn:
         conn.execute("""CREATE TABLE IF NOT EXISTS planning_jobs(
             job_id TEXT PRIMARY KEY,status TEXT NOT NULL,id TEXT,detail TEXT NOT NULL,
@@ -90,14 +91,17 @@ def run_planning(job_id, data, club):
     with db.transaction(write=True) as conn:
         conn.execute("UPDATE planning_jobs SET status='running',detail='Nexus is coordinating event planning.' WHERE job_id=?",(job_id,))
     try:
-        result = api.create_event(data,club)
-        event_id, status, detail = result["id"], "completed", "Event plan saved."
+        execution=trace.Execution(club["id"],None,job_id,"Bootstrap event",job_id)
+        with execution.recording(), db.transaction(True) as conn:
+            result = engine.create(conn,data.model_dump(mode="json"),club["id"],execution)
+            conn.execute("UPDATE planning_jobs SET status='completed',id=?,detail='Event plan saved.' WHERE job_id=?",
+                         (result["id"],job_id))
     except Exception as exc:
-        event_id, status = None, "failed"
         detail = str(exc.detail)[:400] if isinstance(exc,HTTPException) else "Planning failed. Review the event inputs and try again."
         logger.warning("Planning failed (%s)",type(exc).__name__)
-    with db.transaction(write=True) as conn:
-        conn.execute("UPDATE planning_jobs SET status=?,id=?,detail=? WHERE job_id=?",(status,event_id,detail,job_id))
+        with db.transaction(write=True) as conn:
+            conn.execute("UPDATE planning_jobs SET status='failed',detail=? WHERE job_id=? AND status='running'",(detail,job_id))
+
 
 
 @app.post("/api/planning-jobs",status_code=202)
@@ -122,6 +126,14 @@ def job_status(job_id: str, club: auth.Workspace):
     if row is None:
         raise HTTPException(404,"Planning job not found.")
     return dict(row)
+
+
+@app.get("/api/jobs/{job_id}/trace")
+def job_trace(job_id:str, request:Request, club:auth.Workspace):
+    status=job_status(job_id,club)
+    if status["status"]=="failed" and not trace.entries(club["id"],"trace_id",job_id,limit=1):
+        raise HTTPException(409,status["detail"])
+    return trace.stream(request,club["id"],"trace_id",job_id)
 
 
 def snapshot(event_id,club):

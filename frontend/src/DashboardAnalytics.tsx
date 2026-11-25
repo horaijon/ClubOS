@@ -3,13 +3,7 @@ import { Download } from 'lucide-react'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { shortDate, type Snapshot } from './data'
 
-export type Period = 7 | 30 | 90
-
-export function PeriodControl({value, onChange}:{value:Period;onChange:(period:Period)=>void}){
-  return <div className="dash-period" role="group" aria-label="Chart date range">
-    {([7,30,90] as const).map(days=><button key={days} type="button" aria-pressed={value===days} onClick={()=>onChange(days)}>{days} days</button>)}
-  </div>
-}
+import { PeriodControl, type Period } from './PeriodControl'
 
 export function eventSeries(data:Snapshot, days:Period) {
   const registrations = new Map<string,number>()

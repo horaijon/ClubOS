@@ -4,7 +4,7 @@ import re
 from datetime import date,timedelta
 from . import intelligence
 from .db import insert,now,encode
-from .state import scoped,choice,number,required,STAGES,Missing,Invalid,Conflict,due_in,iso,prospects
+from .state import scoped,choice,number,required,STAGES,funding,task,Missing,Invalid,Conflict,due_in,iso,prospects
 from .recovery import currency,optimize
 
 def sponsor(flow,key):
@@ -26,13 +26,23 @@ def add_prospect(f,p):
 def draft(f,p,kind):
     s=sponsor(f,p.get('sponsor_id'))
     packages=f.c.execute('SELECT * FROM packages WHERE event_id=? ORDER BY amount DESC',(f.id,)).fetchall()
-    pkg=packages[min(2,len(packages)-1)]
-    intro=f'{f.e["club"]} is organizing {f.e["name"]} for {f.e["target"]} students at {f.e["venue"]}.'
-    if kind=='proposal':
-        fallback=f'{f.e["name"]} × {s["name"]}\n\n{intro} As a {s["industry"].lower()} organization, your team can introduce practical tools to our campus community.\n\nProposed {pkg["name"]} package · {currency(pkg["amount"])}\n{pkg["benefits"]}\n\nNext step: discuss the proposed scope and agree on deliverables together.'
+    match=next(p for p in prospects(f.c,f.e) if p['id']==s['prospect_id'])
+    if (match['sponsorship_type'] or '').replace('-',' ').lower()=='in kind':
+        tier='In-Kind Partner'
+        rationale='This package pairs an equipment or service contribution with campus recognition.'
+    elif match['score']>=70:
+        tier='Gold Sponsor'
+        rationale=f'A booth puts your team in front of {f.e["target"]} builders working on related projects.'
     else:
-        fallback=f'Subject: {"Following up on" if kind=="followup" else "Partnership invitation for"} {f.e["name"]}\n\nHello {s["name"]} team,\n\n{intro} We would love to explore a {pkg["name"]} partnership with your {s["industry"].lower()} team. The proposed {currency(pkg["amount"])} package includes {pkg["benefits"].lower()}\n\nWould you be available to discuss this next week?\n\n{f.e["club"]}'
-    a=f.consult('Magnet','propose_package' if kind=='proposal' else 'draft_outreach',dict(kind=kind,company=s['name'],industry=s['industry'],event_type=f.e['type'],package=pkg['name'],requested_paise=pkg['amount'],audience=f.e['target']),fallback)
+        tier='Silver Sponsor'
+        rationale='A website acknowledgement gives your team a focused way to reach students.'
+    pkg=next((p for p in packages if p['name']==tier),packages[min(2,len(packages)-1)])
+    intro=f'{f.e["club"]} is organizing {f.e["name"]} for {f.e["target"]} students at {f.e["venue"]}. Our focus is {f.e["goals"].strip().rstrip(".") or f.e["type"]}.'
+    if kind=='proposal':
+        fallback=f'{f.e["name"]} × {s["name"]}\n\n{intro} As a {s["industry"].lower()} organization, your team can introduce practical tools to our campus community.\n\nProposed {pkg["name"]} package · {currency(pkg["amount"])}\n{pkg["benefits"]} {rationale}\n\nNext step: discuss the proposed scope and agree on deliverables together.'
+    else:
+        fallback=f'Subject: {"Following up on" if kind=="followup" else "Partnership invitation for"} {f.e["name"]}\n\nHello {s["name"]} team,\n\n{intro} We would love to explore a {pkg["name"]} partnership with your {s["industry"].lower()} team. The proposed {currency(pkg["amount"])} package includes {pkg["benefits"].lower()} {rationale}\n\nWould you be available to discuss this next week?\n\n{f.e["club"]}'
+    a=f.consult('Magnet','propose_package' if kind=='proposal' else 'draft_outreach',dict(kind=kind,company=s['name'],industry=s['industry'],event_type=f.e['type'],package=pkg['name'],requested_paise=pkg['amount'],audience=f.e['target'],theme=f.e['goals'],event_name=f.e['name'],benefits=pkg['benefits'],fit=match['reason'],tier_rationale=rationale),fallback)
     stage='Outreach Drafted' if s['stage'] in ('Identified','Shortlisted') and kind=='outreach' else s['stage']
     f.c.execute('UPDATE sponsors SET draft=?,stage=? WHERE id=?',(a['text'],stage,s['id']))
     insert(f.c,'communications',event_id=f.id,sponsor_id=s['id'],kind=kind,text=a['text'],created_at=now())
@@ -56,7 +66,7 @@ def terms(f,p,kind):
     if kind=='agreement':
         if t['amount'] is not None:
             amt=number(t['amount'],'Proposed amount')
-            actions.append(dict(type='confirm',title=f'Confirm {currency(amt)} from {s["name"]}',amount=amt,**base))
+            actions.append(dict(type='confirm',title=f'Confirm {currency(amt)} from {s["name"]}',amount=amt,due_date=t.get('payment_date') or f.e['start_date'],**base))
         for title in dict.fromkeys(t['deliverables']):
             if re.search('payment|instalment|installment',title,re.I) and not re.search('booth|speak|brand|logo',title,re.I):continue
             dept='Operations' if re.search('booth|speak|slot|stall|room|equipment',title,re.I) else 'Marketing'
@@ -78,15 +88,48 @@ def terms(f,p,kind):
     f.note(f'Sponsor {kind} analyzed',s['name'],'Magnet')
     return dict(message='Extracted terms are available for organizer review.',terms=t,approval_id=aid,mode=t['mode'])
 
+def confirm(f,s,amount,due_date=None,defaults=True):
+    c=f.c
+    paid=c.execute('SELECT COALESCE(SUM(amount),0) FROM payments WHERE sponsor_id=?',(s['id'],)).fetchone()[0]
+    if amount<paid:raise Conflict('The commitment cannot fall below recorded payments.')
+    first=s['stage']!='Confirmed'
+    due=iso(due_date).isoformat() if due_date else f.e['start_date']
+    with f.tool('Ledger','create_sponsor_receivable',dict(sponsor_id=s['id'],amount=amount,due_date=due)) as step:
+        c.execute("UPDATE sponsors SET stage='Confirmed',committed=?,follow_up_date=NULL WHERE id=?",(amount,s['id']))
+        if amount:
+            c.execute('INSERT INTO receivables VALUES (?,?) ON CONFLICT(sponsor_id) DO UPDATE SET due_date=excluded.due_date',(s['id'],due))
+        step.update(summary=f'Recorded {currency(amount)} committed by {s["name"]}.',output=dict(outstanding=amount-paid,due_date=due))
+    if first and defaults:
+        with f.tool('Atlas','create_task',dict(sponsor_id=s['id'])) as step:
+            ids=[]
+            artwork_due=min(due_in(f.e,5),f.e['start_date'])
+            for title,dept,due in [(f'Confirm {s["name"]} logo placement on the stage banner','Marketing',artwork_due),
+                                   (f'Set up the {s["name"]} partner booth','Operations',f.e['start_date'])]:
+                key=task(c,f.id,title,dept,due,'Atlas','High',sponsor_id=s['id'])
+                insert(c,'deliverables',event_id=f.id,sponsor_id=s['id'],task_id=key)
+                ids.append(key)
+            c.execute('INSERT INTO dependencies VALUES (?,?)',(ids[1],ids[0]))
+            step.update(summary=f'Created {len(ids)} linked deliverables for {s["name"]}.',output=dict(task_ids=ids))
+    if first:
+        draft=f.consult('Echo','draft_campaign',dict(sponsor=s['name'],target=f.e['target'],venue=f.e['venue'],start=f.e['start_date']),
+             f'Welcome {s["name"]} as a partner for {f.e["name"]}. We look forward to bringing together {f.e["target"]} students on {f.e["start_date"]} at {f.e["venue"]}.')
+        insert(c,'marketing',event_id=f.id,title=f'Welcome {s["name"]}',channel='Social',body=draft['text'],scheduled_date=due_in(f.e,2))
+    if not funding(c,f.e)['shortfall']:
+        c.execute("UPDATE risks SET status='Resolved' WHERE event_id=? AND fingerprint='funding-gap'",(f.id,))
+        c.execute("UPDATE approvals SET status='Superseded',decided_at=? WHERE status='Pending' AND risk_id IN (SELECT id FROM risks WHERE event_id=? AND fingerprint='funding-gap')",(now(),f.id))
+    f.note('Sponsor commitment confirmed',f'{s["name"]} committed {currency(amount)}.','Ledger')
+    return dict(message='Commitment recorded. Atlas linked deliverables and Echo saved an announcement draft.')
+
 def withdraw(f,p):
     s=sponsor(f,p.get('sponsor_id'))
     if s['stage']=='Withdrawn': return dict(message='Withdrawal already recorded.')
     if s['stage']!='Confirmed':raise Conflict('Only a confirmed commitment can be withdrawn.')
     if f.c.execute('SELECT 1 FROM payments WHERE sponsor_id=?',(s['id'],)).fetchone():
         raise Conflict('This sponsor has recorded payments. Reconcile a refund separately before withdrawing.')
+    before=funding(f.c,f.e)['balance']
     f.c.execute("UPDATE sponsors SET stage='Withdrawn',committed=0,follow_up_date=NULL WHERE id=?",(s['id'],))
     f.note(f'{s["name"]} withdrew',f'{currency(s["committed"])} removed from projected funding.','Magnet')
-    return optimize(f,f'{s["name"]} withdrawal')
+    return optimize(f,f'{s["name"]} withdrawal',previous=before,withdrawn=s["id"])
 
 def stage(f,p):
     s=sponsor(f,p.get('sponsor_id'))
@@ -96,10 +139,7 @@ def stage(f,p):
     if s['stage']=='Confirmed':raise Conflict('Use the withdrawal workflow for a confirmed sponsor.')
     if s['stage'] in ('Withdrawn','Declined') and dest not in ('Identified','Shortlisted'): raise Conflict('Reopen the sponsor as Identified or Shortlisted first.')
     if dest=='Confirmed':
-        amt=number(p.get('amount'),'Commitment amount')
-        a=dict(type='confirm',title=f'Confirm {currency(amt)} for {s["name"]}',sponsor_id=s['id'],amount=amt,before_stage=s['stage'],before_amount=s['committed'])
-        aid=f.approval('Review sponsorship commitment',f'Confirm the agreed value with {s["name"]}. Cash received stays unchanged.',[a])
-        return dict(message='Commitment queued for approval.',approval_id=aid)
+        return confirm(f,s,number(p.get('amount'),'Commitment amount'),p.get('due_date'))
     follow=(date.today()+timedelta(days=s['follow_up_days'])).isoformat() if dest=='Contacted' else None
     f.c.execute('UPDATE sponsors SET stage=?,follow_up_date=? WHERE id=?',(dest,follow,s['id']))
     f.note(f'{s["name"]} moved to {dest}',f'Previous stage: {s["stage"]}.','Magnet')
@@ -111,7 +151,11 @@ def payment(f,p):
     amt=number(p.get('amount'),'Payment',1)
     received=f.c.execute('SELECT COALESCE(SUM(amount),0) FROM payments WHERE sponsor_id=?',(s['id'],)).fetchone()[0]
     if amt>s['committed']-received:raise Conflict('Payment exceeds the outstanding commitment.')
-    insert(f.c,'payments',event_id=f.id,sponsor_id=s['id'],amount=amt,created_at=now())
-    f.log('Ledger','record_payment',f'Recorded incoming {currency(amt)} from {s["name"]}.')
+    with f.tool('Ledger','record_payment',dict(sponsor_id=s['id'],amount=amt)) as step:
+        insert(f.c,'payments',event_id=f.id,sponsor_id=s['id'],amount=amt,created_at=now())
+        remaining=s['committed']-received-amt
+        if not remaining:
+            f.c.execute("UPDATE risks SET status='Resolved' WHERE event_id=? AND fingerprint=?",(f.id,'payment:'+s['id']))
+        step.update(summary=f'Recorded incoming {currency(amt)} from {s["name"]}.',output=dict(outstanding=remaining))
     f.note('Sponsor payment received',f'{s["name"]} paid {currency(amt)}.','Ledger')
     return dict(message='Payment recorded.')

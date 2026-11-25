@@ -2,15 +2,20 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { CheckCircle2, Inbox, LoaderCircle, Search, X } from 'lucide-react'
 
+import type { TraceStep } from '../LiveTrace'
+
 export interface ModuleProps {
   page: string
   data: any
   act: (type: string, payload?: Record<string, any>) => Promise<any>
   navigate: (page: string) => void
   refresh: () => Promise<void>
+  trace: TraceStep[]
+  traceConnected: boolean
+  traceRequest: string
 }
 export type Row = Record<string, any>
-export type ViewProps = Pick<ModuleProps, 'data' | 'act' | 'navigate'>
+export type ViewProps = Pick<ModuleProps, 'data' | 'act' | 'navigate' | 'trace' | 'traceConnected' | 'traceRequest'>
 export { money } from '../data'
 export function day(value?: string, year = false) {
   if (!value) return 'No date'
@@ -19,7 +24,8 @@ export function day(value?: string, year = false) {
 }
 export const human = (v: any) => String(v ?? '').replace(/[_-]/g, ' ').replace(/^./, x => x.toUpperCase())
 export const initials = (s: string) => (s || 'Club').split(/\s+/).slice(0,2).map(x => x[0]).join('').toUpperCase()
-export function Head({title,sub,action}:{title:string,sub:string,action?:ReactNode}) {
+export function Head({title,sub,action,embedded=false}:{title:string,sub:string,action?:ReactNode,embedded?:boolean}) {
+  if(embedded)return action?<div className="m-toolrow m-embedded-actions">{action}</div>:null
   return <header className="m-head"><div><h1>{title}</h1><p>{sub}</p></div>{action}</header>
 }
 export function StatGrid({items}:{items: {label:string,value:ReactNode,detail?:ReactNode,tone?:string}[]}) {
