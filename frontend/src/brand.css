@@ -1,0 +1,152 @@
+/*
+  Landing-page theme carried into the app: blue grid canvas, white
+  cards, lime actions and heavy headlines. Selectors carry an extra ancestor so
+  they win over stylesheets that load later with lazy screens. The landing page itself is left untouched.
+*/
+:root:has(.shell, .site-entry, .public-registration) {
+  --accent: var(--cobalt);
+  --bg: #eef2ff;
+  --canvas: #eef2ff;
+  --raised: #edf1fd;
+  --line: #d9e1f7;
+  --blue-tint: #e6ecff;
+  --card-border: #d9e1f7;
+  --card-shadow: 0 14px 30px #06186838;
+}
+
+body:has(.site-entry) {
+  background: var(--cobalt);
+}
+
+.shell, body main.site-entry, body main.public-registration {
+  background-color: var(--cobalt);
+  background-image: var(--brand-grid);
+  background-size: 64px 64px;
+  background-position: center top;
+  background-attachment: fixed;
+}
+
+/* ---------- Top bar: same cobalt glass as the landing header ---------- */
+.shell .topbar.glass {
+  --text: #fff;
+  --secondary: #f1f4ff;
+  --muted: #d4dfff;
+  --line: #9db7ff63;
+  --raised: #ffffff23;
+  --surface: #ffffff14;
+  color: #fff;
+  background: #1330aeee;
+  border-color: #bfd3ff59;
+  border-radius: 18px;
+  box-shadow: 0 10px 30px #0716612c, inset 0 1px 0 #ffffff3d;
+}
+.shell .topbar .command-search { background: #ffffff17; }
+.shell .topbar .command-search:hover { background: #ffffff29; }
+.shell .topbar .copilot-btn { background: var(--lime); border-color: var(--lime); color: var(--ink); }
+.shell .topbar .copilot-btn:hover { background: var(--lime-hover); }
+.shell .topbar .notifications i { background: var(--lime); box-shadow: 0 0 0 2px var(--cobalt-deep); }
+.shell .topbar :focus-visible { outline-color: #fff; }
+
+/* ---------- Page headings that sit directly on the canvas ---------- */
+.shell .main-content .m-head h1,
+.shell .main-content .mc-title-group h1,
+.shell .main-content .dash-heading h1,
+.shell .main-content .page-intro h1 {
+  color: var(--cobalt-deep);
+  font-size: clamp(2rem, 3.6vw, 3.25rem);
+  font-weight: 900;
+  line-height: 1.04;
+  letter-spacing: -.06em;
+}
+.shell .main-content .m-head p,
+.shell .main-content .dash-heading p,
+.shell .main-content .page-intro p,
+.shell .main-content > .m-view > .m-toolrow > .m-sub { color: var(--ink); }
+.shell .main-content :is(.m-head, .mc-header, .dash-heading, .page-intro) :focus-visible,
+.shell .main-content > .m-view > .m-toolrow > .m-tabs :focus-visible { outline-color: var(--cobalt-deep); }
+.shell .main-content > .shell-loading { color: var(--ink); }
+.shell .main-content .workspace-empty h1 { color: var(--cobalt-deep); font-weight: 900; }
+.shell .main-content .workspace-empty p { color: var(--ink); }
+.shell .main-content .workspace-empty-icon { background: var(--lime); border-color: var(--lime); color: var(--ink); }
+.shell .main-content .dash-workspace { background: transparent; border: 0; box-shadow: none; padding: 0; }
+.shell .main-content .dash-period { background: #fff; }
+.shell .main-content .dash-period button[aria-pressed="true"] { color: #fff; }
+
+/* ---------- Cards ---------- */
+.shell :is(.m-panel, .m-stat, .m-card, .mc-kpi-card, .mc-panel, .dash-panel, .metric, .trace-panel, .m-generator),
+.shell .main-content > .event-options {
+  border-color: #ffffffb3;
+  border-radius: 20px;
+  box-shadow: var(--card-shadow);
+}
+.shell .main-content > .m-view > .m-grid > .m-empty { background: #fff; border-radius: 20px; box-shadow: var(--card-shadow); }
+.shell .m-view .m-stats .m-stat:first-child { background: var(--lime); border-color: #f2ffc4; }
+.shell .m-view .m-stats .m-stat:first-child :is(span, small) { color: #26340a; }
+.shell .mc-kpi-card { border-top: 6px solid var(--lime); }
+.shell .mc-agent-pill { border-radius: 16px; border-color: #ffffffb3; box-shadow: 0 8px 18px #0618682e; }
+.shell .mc-banner-info { background: #e6efff; border-color: #fff; border-radius: 14px; color: var(--cobalt-deep); }
+
+.shell .m-view :is(.m-stat strong, .mc-kpi-number) { font-weight: 850; }
+.shell .m-view :is(.m-panelhead h2, .mc-panel-head h2) { font-weight: 800; }
+.shell .m-view :is(.m-table th, .mc-kpi-agent) { font-family: var(--font-mono); }
+
+/* ---------- Controls ---------- */
+.shell .m-view .m-btn { border-radius: 10px; }
+.shell .m-view .m-btn.primary,
+.shell .mc-card-actions .m-btn.primary,
+.shell .mc-approval-actions .m-btn.approve-btn,
+.shell .mc-new-event-btn {
+  background: var(--lime);
+  border-color: #aac841;
+  color: var(--ink);
+  font-weight: 700;
+}
+.shell .m-view .m-btn.primary:hover,
+.shell .mc-card-actions .m-btn.primary:hover,
+.shell .mc-approval-actions .m-btn.approve-btn:hover,
+.shell .mc-new-event-btn:hover { background: var(--lime-hover); }
+.shell .m-view .m-tabs { background: #fff; border-color: #fff; border-radius: 12px; }
+.shell .m-view .m-tabs button[aria-pressed="true"] { background: var(--cobalt); color: #fff; }
+.shell .mc-feed-payload summary { color: var(--cobalt); }
+.shell .mc-meta-pill--event { background: var(--lime); border-color: var(--lime); color: var(--ink); }
+
+/* ---------- Dialogs get a grid title bar ---------- */
+.shell .shell-dialog .dialog-top,
+.shell .m-dialog .m-dialoghead {
+  color: var(--cobalt-deep);
+  background-image: var(--brand-grid);
+  background-size: 32px 32px;
+}
+.shell .shell-dialog.trace-drawer .dialog-top { margin: 0 -18px; }
+.shell .m-dialog .m-dialoghead { margin: -22px -22px 18px; padding: 14px 22px; }
+.shell .dialog-top h2, .shell .m-dialog .m-dialoghead h2 { color: var(--cobalt-deep); font-weight: 800; }
+.shell .dialog-top .icon-button, .shell .m-dialog .m-dialoghead .m-icon { color: var(--cobalt-deep); background: #ffffff8c; border-color: #fff; }
+.shell .dialog-top .icon-button:hover, .shell .m-dialog .m-dialoghead .m-icon:hover { background: #fff; }
+.shell .dialog-top :focus-visible, .shell .m-dialog .m-dialoghead :focus-visible { outline-color: var(--cobalt-deep); }
+
+/* ---------- Log in, sign up and club setup ---------- */
+body main.site-entry .entry-side { background: transparent; color: #fff; padding-left: 0; }
+body main.site-entry .entry-side-title { font-weight: 900; text-shadow: .045em .054em 0 var(--cobalt-deep); }
+body main.site-entry .entry-panel { border-radius: 24px; border-color: #fff; box-shadow: 0 26px 44px #0618686b; }
+body main.site-entry .entry-step { font-family: var(--font-mono); }
+body main.site-entry .entry-panel h1 { font-weight: 900; }
+
+/* ---------- Public event registration ---------- */
+body main.public-registration .public-form { border: 0; border-radius: 24px; box-shadow: 0 26px 44px #0618686b; }
+body main.public-registration .public-form h1 { font-weight: 900; line-height: 1.05; letter-spacing: -.055em; color: var(--cobalt); }
+body main.public-registration .wordmark .logo-mark { color: var(--cobalt); }
+
+@media (max-width: 670px) {
+  .shell .topbar.glass { border-radius: 14px; }
+}
+@media (max-width: 650px) {
+  .shell .m-dialog .m-dialoghead { margin: -16px -16px 16px; padding: 12px 16px; }
+}
+
+/* ---------- Light grid canvas for the workspace and public registration (login keeps full cobalt) ---------- */
+body:has(.shell), body:has(.public-registration) { background: #a2b0f2; }
+.shell, body main.public-registration,
+.shell .shell-dialog .dialog-top, .shell .m-dialog .m-dialoghead {
+  --brand-grid: linear-gradient(#ffffff59 1px,transparent 1px),linear-gradient(90deg,#ffffff59 1px,transparent 1px);
+  background-color: #a2b0f2;
+}

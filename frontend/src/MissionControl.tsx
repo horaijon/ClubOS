@@ -157,6 +157,8 @@ export default function MissionControl({ data, act, navigate, trace, traceConnec
   const contactedCount = stages('Contacted')
 
   return <div className="mc-shell m-view">
+    {/* First screen: the agent strip below it only shows after scrolling */}
+    <div className="mc-shell mc-first-screen">
     <header className="mc-header">
       <div className="mc-title-group">
         <h1>Mission Control</h1>
@@ -305,47 +307,6 @@ export default function MissionControl({ data, act, navigate, trace, traceConnec
       </section>
     </div>
 
-    {/* Compact Live Agent Team Strip */}
-    <div className="mc-agent-strip" role="region" aria-label="Live Agent Team">
-      <button type="button" className="mc-agent-pill" onClick={() => navigate('agents')}>
-        <AgentMark name="Nexus" />
-        <div className="mc-agent-pill-copy">
-          <strong>Nexus · Orchestrator</strong>
-          <small>{traceConnected ? 'Live stream active' : 'Ready'}</small>
-        </div>
-        <span className="mc-agent-status">Active</span>
-      </button>
-
-      <button type="button" className="mc-agent-pill" onClick={() => navigate('registrations')}>
-        <AgentMark name="FormFlow" />
-        <div className="mc-agent-pill-copy">
-          <strong>FormFlow · Google Forms</strong>
-          <small>{form?.is_google_form ? 'Auto-syncing every 18s' : form ? 'Local form live' : 'Not published'}</small>
-        </div>
-        <span className={'mc-agent-status' + (form?.is_google_form ? '' : ' muted')}>{form?.is_google_form ? 'Live' : 'Local'}</span>
-      </button>
-
-      <button type="button" className="mc-agent-pill" onClick={() => navigate('sponsors')}>
-        <AgentMark name="Magnet" />
-        <div className="mc-agent-pill-copy">
-          <strong>Magnet · Gmail Outreach</strong>
-          <small>{googleStatus?.connected ? `Monitoring ${contactedCount} thread${contactedCount === 1 ? '' : 's'}` : 'Simulation mode'}</small>
-        </div>
-        <span className={'mc-agent-status' + (googleStatus?.connected ? '' : ' muted')}>{googleStatus?.connected ? 'Gmail' : 'Demo'}</span>
-      </button>
-
-      <button type="button" className="mc-agent-pill" onClick={() => navigate('finance')}>
-        <AgentMark name="OpsLedger" />
-        <div className="mc-agent-pill-copy">
-          <strong>OpsLedger · Budget & Timeline</strong>
-          <small>{m.balance >= 0 && m.overdue === 0 ? `${m.readiness}% readiness` : m.balance < 0 ? 'Funding shortfall' : `${m.overdue} overdue tasks`}</small>
-        </div>
-        <span className={'mc-agent-status' + (m.balance < 0 || m.overdue > 0 ? ' alert' : '')}>
-          {m.balance < 0 || m.overdue > 0 ? 'Alert' : 'On track'}
-        </span>
-      </button>
-    </div>
-
     {/* Bottom 60 / 40 Split View */}
     <div className="mc-split">
       {/* Left 60%: Live Agent Activity */}
@@ -424,6 +385,48 @@ export default function MissionControl({ data, act, navigate, trace, traceConnec
           <Button onClick={() => navigate('approvals')}>Review approval history <ArrowRight size={14} /></Button>
         </div>
       </section>
+    </div>
+    </div>
+
+    {/* Compact Live Agent Team Strip */}
+    <div className="mc-agent-strip" role="region" aria-label="Live Agent Team">
+      <button type="button" className="mc-agent-pill" onClick={() => navigate('agents')}>
+        <AgentMark name="Nexus" />
+        <div className="mc-agent-pill-copy">
+          <strong>Nexus · Orchestrator</strong>
+          <small>{traceConnected ? 'Live stream active' : 'Ready'}</small>
+        </div>
+        <span className="mc-agent-status">Active</span>
+      </button>
+
+      <button type="button" className="mc-agent-pill" onClick={() => navigate('registrations')}>
+        <AgentMark name="FormFlow" />
+        <div className="mc-agent-pill-copy">
+          <strong>FormFlow · Google Forms</strong>
+          <small>{form?.is_google_form ? 'Auto-syncing every 18s' : form ? 'Local form live' : 'Not published'}</small>
+        </div>
+        <span className={'mc-agent-status' + (form?.is_google_form ? '' : ' muted')}>{form?.is_google_form ? 'Live' : 'Local'}</span>
+      </button>
+
+      <button type="button" className="mc-agent-pill" onClick={() => navigate('sponsors')}>
+        <AgentMark name="Magnet" />
+        <div className="mc-agent-pill-copy">
+          <strong>Magnet · Gmail Outreach</strong>
+          <small>{googleStatus?.connected ? `Monitoring ${contactedCount} thread${contactedCount === 1 ? '' : 's'}` : 'Simulation mode'}</small>
+        </div>
+        <span className={'mc-agent-status' + (googleStatus?.connected ? '' : ' muted')}>{googleStatus?.connected ? 'Gmail' : 'Demo'}</span>
+      </button>
+
+      <button type="button" className="mc-agent-pill" onClick={() => navigate('finance')}>
+        <AgentMark name="OpsLedger" />
+        <div className="mc-agent-pill-copy">
+          <strong>OpsLedger · Budget & Timeline</strong>
+          <small>{m.balance >= 0 && m.overdue === 0 ? `${m.readiness}% readiness` : m.balance < 0 ? 'Funding shortfall' : `${m.overdue} overdue tasks`}</small>
+        </div>
+        <span className={'mc-agent-status' + (m.balance < 0 || m.overdue > 0 ? ' alert' : '')}>
+          {m.balance < 0 || m.overdue > 0 ? 'Alert' : 'On track'}
+        </span>
+      </button>
     </div>
 
     {qrOpen && qrSrc && (
@@ -542,8 +545,7 @@ export function Registrations({ data, act, refresh, googleStatus, onConnectGoogl
             : `Full name, email${form.fields.map(field => ', ' + field.label).join('')}`}
         </p>
         <div className="m-actions" style={{ marginTop: 12 }}>
-          <a className="mc-link-pill" href={formLink} target="_blank" rel="noreferrer"><Link2 size={13} /> {formLink}</a>
-          <CopyButton value={formLink} />
+          <CopyButton icon label="Copy form link" value={formLink} />
           <a className="m-btn" href={formLink} target="_blank" rel="noreferrer" aria-label="Open public form">Open Form <ArrowUpRight size={14} /></a>
           {form.edit_uri && <a className="m-btn" href={form.edit_uri} target="_blank" rel="noreferrer">Edit in Google Forms <ExternalLink size={13} /></a>}
           <Button onClick={() => setQrOpen(true)}><QrCode size={14} /> QR Code</Button>
@@ -553,7 +555,7 @@ export function Registrations({ data, act, refresh, googleStatus, onConnectGoogl
 
     <Panel title={participants.length + ' registrations'} action={<Button onClick={exportCsv}>Export CSV</Button>}>
       <div className="m-pad"><label className="m-field">Search participants<input type="search" value={query} onChange={e => setQuery(e.target.value)} /></label></div>
-      <div className="m-tablewrap">
+      <div className="m-tablewrap m-scrolltable is-tall" role="region" aria-label="Registrants" tabIndex={0}>
         <table className="m-table">
           <thead><tr><th>Name</th><th>Email</th>{form?.fields.map(field => <th key={field.key}>{field.label}</th>)}<th>Attendance</th></tr></thead>
           <tbody>
