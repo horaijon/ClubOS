@@ -69,6 +69,28 @@ def _cached_client():
         http_status_codes=[429,500,502,503,504])))
 
 
+def local_chat(messages, max_tokens=450):
+    """Use the configured loopback model shared with Copilot."""
+    model = os.getenv("CLUBOS_LOCAL_COPILOT_MODEL", "").strip()
+    if not model:
+        return None
+    import httpx
+
+    try:
+        port = int(os.getenv("CLUBOS_LOCAL_COPILOT_PORT", "8031"))
+        response = httpx.post(
+            f"http://127.0.0.1:{port}/v1/chat/completions",
+            json={"model": model, "messages": messages, "temperature": 0.0, "max_tokens": max_tokens},
+            timeout=httpx.Timeout(45.0, connect=1.0),
+        )
+        response.raise_for_status()
+        raw = response.json()["choices"][0]["message"]["content"].strip()
+        return re.sub(r"^```(?:json)?\s*|\s*```$", "", raw) or None
+    except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
+        log.warning("Local model request failed (%s)", type(exc).__name__)
+        return None
+
+
 def structured(agent, payload, schema, fallback):
     """Exclude credentials, raw participant records and contact emails from agent context."""
     prompt = json.dumps(payload, ensure_ascii=False, default=str)[:26000]
@@ -94,7 +116,7 @@ def structured(agent, payload, schema, fallback):
                 json={
                     "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                     "messages": [
-                        {"role": "system", "content": ROLES[agent] + POLICY + " Return valid JSON matching the schema."},
+                        {"role": "system", "content": ROLES[agent] + POLICY + " Return valid JSON matching this schema: " + json.dumps(schema.model_json_schema())},
                         {"role": "user", "content": prompt},
                     ],
                     "response_format": {"type": "json_object"},

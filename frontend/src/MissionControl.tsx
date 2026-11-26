@@ -1,5 +1,7 @@
+import DisruptionTrigger from './DisruptionTrigger'
+import { DecisionExplainControl } from './DecisionExplain'
 import { useState, type FormEvent } from 'react'
-import { Activity, ArrowRight, ArrowUpRight, Bot, CalendarDays, Check, Clock3, Copy, ExternalLink, Handshake, Link2, MailCheck, MapPin, Plus, QrCode, RefreshCw, Sparkles, Users, Wallet } from 'lucide-react'
+import { Activity, ArrowRight, ArrowUpRight, Bot, CalendarDays, Check, Clock3, Copy, ExternalLink, Handshake, MailCheck, MapPin, Plus, QrCode, RefreshCw, Sparkles, Users, Wallet } from 'lucide-react'
 import { Dialog } from './Dialog'
 import { AgentMark } from './Identity'
 import type { TraceStep } from './LiveTrace'
@@ -7,13 +9,6 @@ import { api, dateOf, money, ratio, shortDate, type ApprovalItem, type Registrat
 import { Button, CopyButton, Head, Notice, Panel, Pill, useAction, day, type Row, type ViewProps } from './modules/ui'
 import './modules.css'
 import './launch.css'
-
-function compactFormUrl(form: RegistrationForm) {
-  if (form.is_google_form && form.responder_uri) {
-    return form.responder_uri.replace(/^https?:\/\//, '').slice(0, 38) + (form.responder_uri.length > 46 ? '…' : '')
-  }
-  return '/register/' + form.slug.slice(0, 12) + '…'
-}
 
 function relativeTime(iso: string) {
   const diffMin = Math.max(0, Math.floor((Date.now() - dateOf(iso).getTime()) / 60000))
@@ -128,11 +123,12 @@ export default function MissionControl({ data, act, navigate, trace, traceConnec
   const latestWorkflowCompleted = trace.some(step => step.kind === 'run_completed')
   const feedItems = (() => {
     const noisy = /agent started|received the workflow|prepared propose_package|prepared draft_outreach/i
-    const items: { id: string; agent: string; title: string; description: string; timestamp: string; payload?: Record<string, unknown> }[] = []
+    const items: { id: string; rawRunId?: string; agent: string; title: string; description: string; timestamp: string; payload?: Record<string, unknown> }[] = []
     for (const r of [...data.runs].slice(0, 12)) {
       if (noisy.test(r.summary || '')) continue
       items.push({
         id: 'run-' + r.id,
+        rawRunId: r.id,
         agent: r.agent || 'Nexus',
         title: r.agent || 'Nexus',
         description: r.summary || r.trigger,
@@ -157,6 +153,8 @@ export default function MissionControl({ data, act, navigate, trace, traceConnec
   const contactedCount = stages('Contacted')
 
   return <div className="mc-shell m-view">
+    {/* First screen: the agent strip below it only shows after scrolling */}
+    <div className="mc-shell mc-first-screen">
     <header className="mc-header">
       <div className="mc-title-group">
         <h1>Mission Control</h1>
@@ -183,6 +181,7 @@ export default function MissionControl({ data, act, navigate, trace, traceConnec
 
     {statusBanner && <div className="m-notice success" role="status">{statusBanner}<button onClick={() => setStatusBanner('')} aria-label="Dismiss"><span style={{ fontSize: 12 }}>✕</span></button></div>}
     <Notice state={action} />
+    <DisruptionTrigger data={data} act={act}/>
 
     {/* Top 3 Outcome Cards */}
     <div className="mc-outcomes">
@@ -209,15 +208,11 @@ export default function MissionControl({ data, act, navigate, trace, traceConnec
         </div>
 
         {form ? <>
-          <a className="mc-link-pill" href={formLink} target="_blank" rel="noreferrer" title={formLink}>
-            <Link2 size={12} />
-            <span>{compactFormUrl(form)}</span>
-          </a>
           <div className="mc-card-actions">
-            <button type="button" className="m-btn" onClick={copyLink}><Copy size={13} /> {copied ? 'Copied' : 'Copy Link'}</button>
-            <a className="m-btn" href={formLink} target="_blank" rel="noreferrer" aria-label="Open public form">Open Form <ArrowUpRight size={13} /></a>
-            <button type="button" className="m-btn" onClick={() => setQrOpen(true)}><QrCode size={13} /> QR</button>
-            {form.is_google_form && <button type="button" className="m-btn" disabled={syncingForm} onClick={handleSyncResponses} title="Sync Google Form responses now"><RefreshCw size={13} className={syncingForm ? 'm-spin' : ''} /></button>}
+            <button type="button" className="m-btn" onClick={copyLink} title={formLink}><Copy size={13} /> {copied ? 'Copied' : 'Copy link'}</button>
+            <a className="m-btn" href={formLink} target="_blank" rel="noreferrer" aria-label="Open public form">Open form <ArrowUpRight size={13} /></a>
+            <button type="button" className="m-btn icon-only" onClick={() => setQrOpen(true)} title="Show QR code" aria-label="Show QR code"><QrCode size={15} /></button>
+            {form.is_google_form && <button type="button" className="m-btn icon-only" disabled={syncingForm} onClick={handleSyncResponses} title="Sync Google Form responses now" aria-label="Sync Google Form responses now"><RefreshCw size={13} className={syncingForm ? 'm-spin' : ''} /></button>}
           </div>
         </> : (
           <div className="mc-card-actions">
@@ -260,11 +255,11 @@ export default function MissionControl({ data, act, navigate, trace, traceConnec
 
         <div className="mc-card-actions">
           <button type="button" className="m-btn" disabled={checkingInbox} onClick={handleCheckInbox}>
-            <MailCheck size={13} /> {checkingInbox ? 'Checking…' : 'Check Inbox'}
+            <MailCheck size={13} /> {checkingInbox ? 'Checking…' : 'Check inbox'}
           </button>
-          <button type="button" className="m-btn" onClick={() => navigate('sponsors')}>Manage Sponsors</button>
+          <button type="button" className="m-btn" onClick={() => navigate('sponsors')}>Manage</button>
           {stages('Outreach Drafted') > 0 && (
-            <button type="button" className="m-btn primary" disabled={action.busy} onClick={() => action.run('prepare_outreach')}>Send Pitches</button>
+            <button type="button" className="m-btn primary" disabled={action.busy} onClick={() => action.run('prepare_outreach')}>Send pitches</button>
           )}
         </div>
       </section>
@@ -305,47 +300,6 @@ export default function MissionControl({ data, act, navigate, trace, traceConnec
       </section>
     </div>
 
-    {/* Compact Live Agent Team Strip */}
-    <div className="mc-agent-strip" role="region" aria-label="Live Agent Team">
-      <button type="button" className="mc-agent-pill" onClick={() => navigate('agents')}>
-        <AgentMark name="Nexus" />
-        <div className="mc-agent-pill-copy">
-          <strong>Nexus · Orchestrator</strong>
-          <small>{traceConnected ? 'Live stream active' : 'Ready'}</small>
-        </div>
-        <span className="mc-agent-status">Active</span>
-      </button>
-
-      <button type="button" className="mc-agent-pill" onClick={() => navigate('registrations')}>
-        <AgentMark name="FormFlow" />
-        <div className="mc-agent-pill-copy">
-          <strong>FormFlow · Google Forms</strong>
-          <small>{form?.is_google_form ? 'Auto-syncing every 18s' : form ? 'Local form live' : 'Not published'}</small>
-        </div>
-        <span className={'mc-agent-status' + (form?.is_google_form ? '' : ' muted')}>{form?.is_google_form ? 'Live' : 'Local'}</span>
-      </button>
-
-      <button type="button" className="mc-agent-pill" onClick={() => navigate('sponsors')}>
-        <AgentMark name="Magnet" />
-        <div className="mc-agent-pill-copy">
-          <strong>Magnet · Gmail Outreach</strong>
-          <small>{googleStatus?.connected ? `Monitoring ${contactedCount} thread${contactedCount === 1 ? '' : 's'}` : 'Simulation mode'}</small>
-        </div>
-        <span className={'mc-agent-status' + (googleStatus?.connected ? '' : ' muted')}>{googleStatus?.connected ? 'Gmail' : 'Demo'}</span>
-      </button>
-
-      <button type="button" className="mc-agent-pill" onClick={() => navigate('finance')}>
-        <AgentMark name="OpsLedger" />
-        <div className="mc-agent-pill-copy">
-          <strong>OpsLedger · Budget & Timeline</strong>
-          <small>{m.balance >= 0 && m.overdue === 0 ? `${m.readiness}% readiness` : m.balance < 0 ? 'Funding shortfall' : `${m.overdue} overdue tasks`}</small>
-        </div>
-        <span className={'mc-agent-status' + (m.balance < 0 || m.overdue > 0 ? ' alert' : '')}>
-          {m.balance < 0 || m.overdue > 0 ? 'Alert' : 'On track'}
-        </span>
-      </button>
-    </div>
-
     {/* Bottom 60 / 40 Split View */}
     <div className="mc-split">
       {/* Left 60%: Live Agent Activity */}
@@ -368,12 +322,15 @@ export default function MissionControl({ data, act, navigate, trace, traceConnec
                     <span className="mc-feed-time">{relativeTime(item.timestamp)}</span>
                   </div>
                   <p className="mc-feed-desc">{item.description}</p>
-                  {item.payload && (
-                    <details className="mc-feed-payload">
-                      <summary>View payload</summary>
-                      <pre>{JSON.stringify(item.payload, null, 2)}</pre>
-                    </details>
-                  )}
+                  {(item.rawRunId || item.payload) && <div className="mc-feed-links">
+                    {item.rawRunId && <DecisionExplainControl data={data} act={act} targetType="run" targetId={item.rawRunId} compact />}
+                    {item.payload && (
+                      <details className="mc-feed-payload">
+                        <summary>View payload</summary>
+                        <pre>{JSON.stringify(item.payload, null, 2)}</pre>
+                      </details>
+                    )}
+                  </div>}
                 </div>
               </li>
             ))}
@@ -412,6 +369,7 @@ export default function MissionControl({ data, act, navigate, trace, traceConnec
                     <button type="button" className="m-btn reject-btn" disabled={action.busy} onClick={() => action.run('reject', { approval_id: item.id })}>
                       Reject
                     </button>
+                    <DecisionExplainControl data={data} act={act} targetType="approval" targetId={item.id} compact />
                   </div>
                 </article>
               )
@@ -424,6 +382,48 @@ export default function MissionControl({ data, act, navigate, trace, traceConnec
           <Button onClick={() => navigate('approvals')}>Review approval history <ArrowRight size={14} /></Button>
         </div>
       </section>
+    </div>
+    </div>
+
+    {/* Compact Live Agent Team Strip */}
+    <div className="mc-agent-strip" role="region" aria-label="Live Agent Team">
+      <button type="button" className="mc-agent-pill" onClick={() => navigate('agents')}>
+        <AgentMark name="Nexus" />
+        <div className="mc-agent-pill-copy">
+          <strong>Nexus</strong>
+          <small>{traceConnected ? 'Live stream active' : 'Ready'}</small>
+        </div>
+        <span className="mc-agent-status">Active</span>
+      </button>
+
+      <button type="button" className="mc-agent-pill" onClick={() => navigate('registrations')}>
+        <AgentMark name="FormFlow" />
+        <div className="mc-agent-pill-copy">
+          <strong>FormFlow</strong>
+          <small>{form?.is_google_form ? 'Auto-syncing every 18s' : form ? 'Local form live' : 'Not published'}</small>
+        </div>
+        <span className={'mc-agent-status' + (form?.is_google_form ? '' : ' muted')}>{form?.is_google_form ? 'Live' : 'Local'}</span>
+      </button>
+
+      <button type="button" className="mc-agent-pill" onClick={() => navigate('sponsors')}>
+        <AgentMark name="Magnet" />
+        <div className="mc-agent-pill-copy">
+          <strong>Magnet</strong>
+          <small>{googleStatus?.connected ? `Monitoring ${contactedCount} thread${contactedCount === 1 ? '' : 's'}` : 'Simulation mode'}</small>
+        </div>
+        <span className={'mc-agent-status' + (googleStatus?.connected ? '' : ' muted')}>{googleStatus?.connected ? 'Gmail' : 'Demo'}</span>
+      </button>
+
+      <button type="button" className="mc-agent-pill" onClick={() => navigate('finance')}>
+        <AgentMark name="OpsLedger" />
+        <div className="mc-agent-pill-copy">
+          <strong>OpsLedger</strong>
+          <small>{m.balance >= 0 && m.overdue === 0 ? `${m.readiness}% readiness` : m.balance < 0 ? 'Funding shortfall' : `${m.overdue} overdue tasks`}</small>
+        </div>
+        <span className={'mc-agent-status' + (m.balance < 0 || m.overdue > 0 ? ' alert' : '')}>
+          {m.balance < 0 || m.overdue > 0 ? 'Alert' : 'On track'}
+        </span>
+      </button>
     </div>
 
     {qrOpen && qrSrc && (
@@ -440,8 +440,8 @@ export default function MissionControl({ data, act, navigate, trace, traceConnec
 }
 
 const fieldOptions = {
-  team_name: 'Team name', team_size: 'Team size', track: 'Track', github: 'GitHub link',
-  college: 'College / university', diet: 'Dietary requirements', experience: 'Experience level', accessibility: 'Accessibility requirements',
+  team_name: 'Team name', team_size: 'Team size', track: 'Track / Domain', github: 'GitHub link',
+  college: 'College name', department: 'Department name', diet: 'Dietary requirements', experience: 'Experience level', accessibility: 'Accessibility requirements',
 }
 
 export function Registrations({ data, act, refresh, googleStatus, onConnectGoogle }: ViewProps & { refresh: () => Promise<void> }) {
@@ -449,7 +449,27 @@ export function Registrations({ data, act, refresh, googleStatus, onConnectGoogl
   const [busyGoogle, setBusyGoogle] = useState(false), [qrOpen, setQrOpen] = useState(false)
   const action = useAction(act), form: RegistrationForm | null = data.registration_form
   const participants: Row[] = data.participants
-  const filtered = participants.filter(p => (p.name || '').toLowerCase().includes(query.trim().toLowerCase()))
+  const fields = new Map((form?.fields ?? []).map(field => [field.key, field.label]))
+  fields.set('college', fieldOptions.college)
+  fields.set('department', fieldOptions.department)
+  fields.delete('track')
+  fields.set('track', fieldOptions.track)
+  const search = query.trim().toLowerCase()
+  const filtered = participants.filter(p => [p.name, p.email, ...Object.values(p.answers ?? {})]
+    .some(value => String(value ?? '').toLowerCase().includes(search)))
+
+  function answer(participant: Row, key: string) {
+    const answers = participant.answers ?? {}
+    if (key === 'college') return answers.college || answers.college_name || answers.college_university || answers.university || answers.institution
+    if (key === 'department') return answers.department || answers.department_name || answers.branch || answers.branch_department
+    if (key === 'track') {
+      // Google Form answers are keyed by question title, e.g. "Track / Domain" -> track_domain.
+      return answers.track || answers.track_domain || answers.domain
+        || Object.entries(answers).find(([name, value]) => value && /(^|_)(tracks?|domains?)(_|$)/.test(name))?.[1]
+    }
+    return answers[key]
+  }
+  const hasCombinedAnswer = participants.some(p => p.answers?.college_department)
 
   const formLink = form ? (form.is_google_form && form.responder_uri ? form.responder_uri : (form.public_url || location.origin + '/register/' + form.slug)) : ''
   const qrSrc = form ? (form.is_google_form ? `/api/events/${encodeURIComponent(data.event.id)}/google-form/qr.svg` : `/api/registration/${form.slug}/qr.svg`) : ''
@@ -498,8 +518,9 @@ export function Registrations({ data, act, refresh, googleStatus, onConnectGoogl
 
   function exportCsv() {
     const cols = Object.keys(fieldOptions)
+    if (hasCombinedAnswer) cols.push('college_department')
     const safe = (value: unknown) => '"' + String(value ?? '').replace(/^[=+\-@\t\r]/, "'$&").replaceAll('"', '""') + '"'
-    const content = [['Name', 'Email', 'Checked in', ...Object.values(fieldOptions)], ...participants.map(p => [p.name, p.email, p.checked_in ? 'Yes' : 'No', ...cols.map(key => p.answers?.[key])])].map(row => row.map(safe).join(',')).join('\r\n')
+    const content = [['Name', 'Email', 'Checked in', ...Object.values(fieldOptions), ...(hasCombinedAnswer ? ['College / Department (combined)'] : [])], ...participants.map(p => [p.name, p.email, p.checked_in ? 'Yes' : 'No', ...cols.map(key => answer(p, key))])].map(row => row.map(safe).join(',')).join('\r\n')
     const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }))
     const link = document.createElement('a'); link.href = url; link.download = 'clubos-registrations.csv'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
@@ -542,8 +563,7 @@ export function Registrations({ data, act, refresh, googleStatus, onConnectGoogl
             : `Full name, email${form.fields.map(field => ', ' + field.label).join('')}`}
         </p>
         <div className="m-actions" style={{ marginTop: 12 }}>
-          <a className="mc-link-pill" href={formLink} target="_blank" rel="noreferrer"><Link2 size={13} /> {formLink}</a>
-          <CopyButton value={formLink} />
+          <CopyButton icon label="Copy form link" value={formLink} />
           <a className="m-btn" href={formLink} target="_blank" rel="noreferrer" aria-label="Open public form">Open Form <ArrowUpRight size={14} /></a>
           {form.edit_uri && <a className="m-btn" href={form.edit_uri} target="_blank" rel="noreferrer">Edit in Google Forms <ExternalLink size={13} /></a>}
           <Button onClick={() => setQrOpen(true)}><QrCode size={14} /> QR Code</Button>
@@ -553,15 +573,15 @@ export function Registrations({ data, act, refresh, googleStatus, onConnectGoogl
 
     <Panel title={participants.length + ' registrations'} action={<Button onClick={exportCsv}>Export CSV</Button>}>
       <div className="m-pad"><label className="m-field">Search participants<input type="search" value={query} onChange={e => setQuery(e.target.value)} /></label></div>
-      <div className="m-tablewrap">
+      <div className="m-tablewrap m-scrolltable is-tall" role="region" aria-label="Registrants" tabIndex={0}>
         <table className="m-table">
-          <thead><tr><th>Name</th><th>Email</th>{form?.fields.map(field => <th key={field.key}>{field.label}</th>)}<th>Attendance</th></tr></thead>
+          <thead><tr><th>Name</th><th>Email</th>{[...fields].map(([key, label]) => <th key={key}>{label}</th>)}<th>Attendance</th></tr></thead>
           <tbody>
             {filtered.map(p => (
               <tr key={p.id}>
                 <td>{p.name}</td>
                 <td>{p.email}</td>
-                {form?.fields.map(field => <td key={field.key}>{p.answers?.[field.key]}</td>)}
+                {[...fields.keys()].map(key => <td key={key}>{answer(p, key) || '—'}</td>)}
                 <td>{p.checked_in ? 'Checked in' : <Button busy={action.busy} onClick={() => action.run('check_in', { participant_id: p.id })}>Check in</Button>}</td>
               </tr>
             ))}

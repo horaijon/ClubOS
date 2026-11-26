@@ -3,6 +3,7 @@ import { ArrowRight, Building2, ChevronRight, Download, FileText, Mail, MailChec
 import { Button, CopyButton, Dialog, Empty, Field, Head, Notice, Panel, Pill, SearchBox, Tabs, day, formValues, human, money, useAction } from './ui'
 import type { Row, ViewProps } from './ui'
 import { api } from '../data'
+import { DecisionExplainControl } from '../DecisionExplain'
 import { TraceView } from '../LiveTrace'
 import ImportCsv from './ImportCsv'
 
@@ -32,6 +33,9 @@ export default function Sponsors(props: ViewProps) {
   const [discovering, setDiscovering] = useState(false)
   const [sendingAll, setSendingAll] = useState(false)
   const [addingInline, setAddingInline] = useState(false)
+  const [confirming, setConfirming] = useState<OutreachItem | null>(null)
+  const [sendingId, setSendingId] = useState('')
+  const [sendError, setSendError] = useState('')
   const [newContact, setNewContact] = useState({ name: '', contact_email: '', industry: 'Developer Tools & AI' })
   const state = useAction(act)
   const sponsors: Row[] = data.sponsors, prospects: Row[] = data.prospects, packages: Row[] = data.packages || []
@@ -160,6 +164,33 @@ export default function Sponsors(props: ViewProps) {
     }
   }
 
+  async function sendOne(item: OutreachItem) {
+    setSendingId(item.sponsor_id)
+    setSendError('')
+    setReplyNotice('')
+    try {
+      const res = await api<{ sent_count: number; failed: { error: string }[] }>(
+        `/api/events/${encodeURIComponent(data.event.id)}/outreach-list/send-all`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            simulate: !googleStatus?.connected,
+            items: [{ sponsor_id: item.sponsor_id, to_email: item.contact_email.trim(), subject: item.subject.trim(), body: item.body.trim() }],
+          }),
+        },
+      )
+      if (!res.sent_count) throw new Error(res.failed?.[0]?.error || 'The email was not sent.')
+      setQueue(prev => prev.filter(i => i.sponsor_id !== item.sponsor_id))
+      setConfirming(null)
+      setReplyNotice(`${googleStatus?.connected ? 'Email sent' : 'Simulated send recorded'} for ${item.name} (${item.contact_email.trim()}).`)
+      await refresh?.()
+    } catch (err) {
+      setSendError((err as Error).message)
+    } finally {
+      setSendingId('')
+    }
+  }
+
   async function checkInboxNow() {
     setCheckingReplies(true)
     setReplyNotice('')
@@ -225,7 +256,7 @@ export default function Sponsors(props: ViewProps) {
     <Notice state={state} />
 
     {tab === 'Outreach Queue' && (
-      <div className="m-stack">
+      <div className="m-stack outreach">
         {/* Bulk Action Bar */}
         <section className="m-card" style={{ background: '#F8FAFC' }}>
           <div className="m-titleline">
@@ -243,7 +274,7 @@ export default function Sponsors(props: ViewProps) {
               <Button
                 primary
                 busy={sendingAll}
-                disabled={readyCount === 0}
+                disabled={readyCount === 0 || !!sendingId}
                 onClick={sendAllConfirmed}
               >
                 <Send size={14} /> {googleStatus?.connected ? `Confirm & Send All (${readyCount})` : `Simulate Send All (${readyCount})`}
@@ -272,26 +303,29 @@ export default function Sponsors(props: ViewProps) {
         {/* Editable Contact & Specialized Email Cards */}
         {queue.length ? queue.map(item => {
           const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item.contact_email.trim())
+          const contacted = ['Contacted', 'Responded', 'Negotiating'].includes(item.stage)
+          const complete = emailValid && !!item.subject.trim() && !!item.body.trim()
           return (
-            <article key={item.sponsor_id} className="m-card">
+            <article key={item.sponsor_id} className="m-card outreach-card">
               <div className="m-titleline" style={{ marginBottom: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <h3 style={{ fontSize: 16 }}>{item.name}</h3>
+                  <h3>{item.name}</h3>
                   <Pill tone="purple">{item.score}% match</Pill>
                   <Pill>{item.industry}</Pill>
-                  <Pill tone={emailValid ? 'mint' : 'amber'}>{emailValid ? 'Ready to send' : 'Needs email'}</Pill>
+                  <Pill tone={emailValid && !contacted ? 'mint' : 'amber'}>{contacted ? 'Already contacted' : emailValid ? 'Ready to send' : 'Needs email'}</Pill>
                   {item.website && (
-                    <a href={item.website} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#2563EB', textDecoration: 'underline' }}>
+                    <a className="outreach-link" href={item.website} target="_blank" rel="noreferrer">
                       {item.website.replace(/^https?:\/\/(www\.)?/, '')} ↗
                     </a>
                   )}
                 </div>
                 <div className="m-actions" style={{ margin: 0 }}>
+                  <DecisionExplainControl data={data} act={act} targetType="sponsor" targetId={item.sponsor_id} compact />
                   <Button busy={state.busy} onClick={() => regenerateOne(item.sponsor_id)}><Sparkles size={13} /> Regenerate</Button>
                   <Button danger onClick={() => removeQueueItem(item.sponsor_id)}><Trash2 size={13} /> Remove</Button>
                 </div>
               </div>
-              {item.description && <p className="m-copy" style={{ margin: '0 0 10px', fontSize: 12.5 }}>{item.description}</p>}
+              {item.description && <p className="m-copy outreach-about">{item.description}</p>}
 
               <div className="m-fields2" style={{ marginBottom: 10 }}>
                 <Field label="Recipient email">
@@ -312,11 +346,17 @@ export default function Sponsors(props: ViewProps) {
 
               <Field label="Specialized email body (tailored by Magnet)">
                 <textarea
-                  rows={5}
+                  rows={6}
                   value={item.body}
                   onChange={e => updateQueueItem(item.sponsor_id, { body: e.target.value })}
                 />
               </Field>
+
+              <div className="outreach-send">
+                <Button primary disabled={!complete || sendingAll || !!sendingId} onClick={() => { setSendError(''); setConfirming(item) }}>
+                  <Send size={15} /> {googleStatus?.connected ? 'Send' : 'Simulate send'} to {item.name}
+                </Button>
+              </div>
             </article>
           )
         }) : (
@@ -328,12 +368,15 @@ export default function Sponsors(props: ViewProps) {
     {tab === 'Pipeline' && (
       <Panel title="Sponsor pipeline" action={<span className="m-sub">{filtered.length} partners</span>}>
         {filtered.map(x => (
-          <button key={x.id} type="button" className="simple-row" onClick={() => setOpen(x.id)} aria-label={'Open ' + x.name}>
-            <strong>{x.name}</strong>
-            <span>{x.contact_email ? `${x.contact_email} · ` : ''}{x.industry} · {x.score}% match</span>
-            <Pill>{x.stage}</Pill>
-            <ChevronRight size={14} />
-          </button>
+          <div key={x.id} className="pipeline-row">
+            <button type="button" className="simple-row" onClick={() => setOpen(x.id)} aria-label={'Open ' + x.name}>
+              <strong>{x.name}</strong>
+              <span>{x.contact_email ? `${x.contact_email} · ` : ''}{x.industry} · {x.score}% match</span>
+              <Pill>{x.stage}</Pill>
+              <ChevronRight size={14} />
+            </button>
+            <DecisionExplainControl data={data} act={act} targetType="sponsor" targetId={x.id} compact />
+          </div>
         ))}
         {!filtered.length && <Empty title="No partners found" detail="Click Find Contacts & Draft Emails or Add Real Demo Sponsor." />}
       </Panel>
@@ -352,6 +395,7 @@ export default function Sponsors(props: ViewProps) {
               <p><strong>Match rationale</strong> · {x.reason}</p>
               <div className="m-actions">
                 {added ? <Button onClick={() => setOpen(added.id)}>View partner <ArrowRight /></Button> : <Button busy={state.busy} onClick={() => state.run('add_prospect', { prospect_id: x.id }, x.name + ' added to pipeline.')}><Plus /> Add to pipeline</Button>}
+                <DecisionExplainControl data={data} act={act} targetType="sponsor" targetId={x.id} compact />
               </div>
             </article>
           )
@@ -376,6 +420,20 @@ export default function Sponsors(props: ViewProps) {
     )}
 
     {selected && <Partner key={selected.id} sponsor={selected} {...props} onClose={() => setOpen('')} />}
+    {confirming && <Dialog title={`${googleStatus?.connected ? 'Send email' : 'Simulate send'} to ${confirming.name}?`} onClose={() => { if (!sendingId) setConfirming(null) }}>
+      <div className="m-pad outreach-confirm">
+        {sendError && <div className="m-notice error" role="alert">{sendError}</div>}
+        <p><strong>To:</strong> {confirming.contact_email.trim()}</p>
+        <p><strong>Subject:</strong> {confirming.subject.trim()}</p>
+        {['Contacted', 'Responded', 'Negotiating'].includes(confirming.stage) && <p className="m-notice error">This company has already been contacted. Sending again emails them a second time.</p>}
+        <p>{googleStatus?.connected ? `This sends a real email from ${googleStatus.email || 'your connected Gmail'}. It cannot be unsent.` : 'Google is not connected, so no real email is sent.'}</p>
+        <div className="m-actions">
+          <Button autoFocus disabled={!!sendingId} onClick={() => setConfirming(null)}>Cancel</Button>
+          <Button primary busy={!!sendingId} onClick={() => sendOne(confirming)}><Send size={15} /> {googleStatus?.connected ? 'Send email' : 'Simulate send'}</Button>
+        </div>
+      </div>
+    </Dialog>}
+
     {importing && <ImportCsv kind="sponsors" act={act} onClose={() => setImporting(false)} />}
 
     {addingReal && (
@@ -467,6 +525,7 @@ function Partner({ sponsor: s, data, act, navigate, onClose, trace, traceConnect
         <div className="m-stack">
           <div className="m-titleline"><span className="m-sub">{s.industry}</span><Pill>{s.stage}</Pill></div>
           <p className="m-copy">{s.reason || s.description}</p>
+          <DecisionExplainControl data={data} act={act} targetType="sponsor" targetId={s.id} />
 
           <form className="m-form" onSubmit={e => {
             e.preventDefault()

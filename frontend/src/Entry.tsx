@@ -14,6 +14,18 @@ function AccountForm({view,onSubmit,busy,error,session}:{
   useEffect(()=>{window.scrollTo(0,0);heading.current?.focus()},[view])
   const setup=view==='setup'
   const signup=view==='signup'
+  const [google,setGoogle]=useState(false)
+  const [googleResult]=useState(()=>new URLSearchParams(location.search).get('google_login'))
+  useEffect(()=>{
+    let active=true
+    api<{available:boolean}>('/api/integrations/google/login-available')
+      .then(data=>{if(active)setGoogle(data.available)}).catch(()=>{})
+    return ()=>{active=false}
+  },[])
+  const googleError=googleResult==='link_required'
+    ?'This email already has a password account. Log in with your password, then connect Google from the top bar (disconnect first if it already shows connected). After that, Continue with Google works.'
+    :googleResult==='wrong_address'?'Open ClubOS at the address set for the Google callback, then try again.'
+    :googleResult?'Google sign-in did not finish. Please try again.':''
   const title=setup?'Set up your club':signup?'Create your account':'Log in to ClubOS'
   return <main className="site-entry">
     <header className="site-entry-header glass glass--cobalt"><SiteBrand/><a href="#" className="entry-return"><ArrowLeft size={16}/> Back to ClubOS</a></header>
@@ -28,6 +40,11 @@ function AccountForm({view,onSubmit,busy,error,session}:{
         <h1 ref={heading} tabIndex={-1}>{title}</h1>
         <p className="entry-description">{setup?`Hi ${session?.name}. Add the details your team will see in the workspace.`:signup?'Set up an organizer account for your campus club.':'Pick up where you left off in your club workspace.'}</p>
         {error&&<p className="site-error" role="alert"><CircleAlert size={17}/>{error}</p>}
+        {!setup&&googleError&&<p className="site-error" role="alert"><CircleAlert size={17}/>{googleError}</p>}
+        {!setup&&google&&<>
+          <a className="site-button entry-google" href="/api/integrations/google/login">Continue with Google</a>
+          <p className="entry-google-note">Signs you in and connects Gmail and Google Forms in one step.</p>
+        </>}
         <form className="entry-form" onSubmit={onSubmit} key={view}>
           {setup ? <>
             <label>Club name<input name="name" autoComplete="organization" maxLength={120} required placeholder="e.g. Robotics Society"/></label>

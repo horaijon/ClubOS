@@ -38,12 +38,54 @@ export function Marketing({data,act,embedded}:ViewProps & {embedded?:boolean}){
 
 export function Copilot({data,act,navigate,trace,traceConnected,traceRequest,embedded}:ViewProps & {embedded?:boolean}){
   const state=useAction(act),[question,setQuestion]=useState(''),[history,setHistory]=useState<Row[]>([])
+  const [dispatching,setDispatching]=useState(false),[delivered,setDelivered]=useState<string[]>([]),[deliveryError,setDeliveryError]=useState('')
   const mic=useDictation()
-  const examples=['Follow up with all contacted sponsors who haven’t replied','Cut ₹8,000 without touching prizes','What are our biggest blockers?']
-  function ask(q:string){if(!q.trim()||state.busy)return;state.run('copilot',{question:q.trim()},undefined,r=>{setHistory(old=>[...old,{question:q,text:r.text,mode:r.mode,approval:r.approval_id}]);setQuestion('')})}
+  const examples=['Email all eligible sponsors','Create a task to confirm the venue','Cut ₹8,000 without touching prizes','What are our biggest blockers?']
+  function ask(q:string){
+    if(!q.trim()||state.busy||dispatching)return
+    state.run('copilot',{question:q.trim(),history:history.map(item=>({question:item.question,answer:item.text}))},undefined,result=>{
+      setHistory(old=>[...old,{question:q,text:result.text,mode:result.mode,approval:result.approval_id,drafts:result.drafts}])
+      setQuestion('')
+    })
+  }
+  async function send(drafts:Row[]){
+    if(dispatching||state.busy)return
+    setDispatching(true);setDeliveryError('')
+    try{
+      for(const draft of drafts.filter(item=>!delivered.includes(item.id))){
+        await act('copilot_send',{draft_id:draft.id})
+        setDelivered(old=>[...old,draft.id])
+      }
+    }catch(err){setDeliveryError((err as Error).message)}
+    finally{setDispatching(false)}
+  }
   const relevant=trace.filter(step=>step.request_id===traceRequest)
-  const copilotTrace=relevant.some(step=>step.input_payload.trigger==='copilot')||state.busy
-  return <><Head embedded={embedded} title="AI Copilot" sub={'Ask Nexus about the current event, '+data.event.name+'.'}/><Panel title="Event conversation" action={<AgentMark name="Nexus"/>}><div className="m-pad"><div className="m-chatlog" aria-live="polite">{!history.length&&<><h3>What would you like to check?</h3><div className="m-actions">{examples.map(q=><Button busy={state.busy} key={q} onClick={()=>ask(q)}>{q}</Button>)}</div></>}{history.map((h,i)=><article className="m-turn" key={i}><div><small>You</small><p>{h.question}</p></div><div><small>Nexus · {human(h.mode||'Event data')}</small><p>{h.text}</p>{h.approval&&<Button onClick={()=>navigate('approvals')}>Review proposed actions</Button>}</div></article>)}</div><div className="m-rule"/><Notice state={state}/><form className="m-form" onSubmit={e=>{e.preventDefault();ask(question)}}><Field label="Message"><textarea value={question} onChange={e=>setQuestion(e.target.value)} placeholder="Ask about tasks, sponsorships, funding or recovery…" rows={3} maxLength={2000} required/></Field><div className="m-actions"><Button primary busy={state.busy} disabled={!question.trim()} type="submit"><Send/> Ask Nexus</Button>{mic.supported&&<Button onClick={()=>mic.toggle(question,setQuestion)}>{mic.listening?'Stop dictation':'Dictate'}</Button>}</div>{mic.error&&<p role="alert">{mic.error}</p>}</form></div></Panel>{copilotTrace&&<TraceView steps={relevant} connected={traceConnected} requestId={traceRequest} compact plain/>}</>
+  return <>
+    <Head embedded={embedded} title="AI Copilot" sub={'Ask Nexus to work on '+data.event.name+'.'}/>
+    <Panel title="Event conversation" action={<AgentMark name="Nexus"/>}>
+      <div className="m-pad">
+        <div className="m-chatlog" aria-live="polite">
+          {!history.length&&<div className="m-actions">{examples.map(example=><Button busy={state.busy} key={example} onClick={()=>ask(example)}>{example}</Button>)}</div>}
+          {history.map((turn,i)=><article className="m-turn" key={i}><div><small>You</small><p>{turn.question}</p></div>
+            <div><small>Nexus · {human(turn.mode||'Event data')}</small><p>{turn.text}</p>
+              {turn.approval&&<Button onClick={()=>navigate('approvals')}>Review proposed actions</Button>}
+              {turn.drafts?.map((draft:Row)=><details key={draft.id}><summary>{draft.name} · {draft.email}{delivered.includes(draft.id)?' · Sent':''}</summary>
+                <p><strong>{draft.subject}</strong></p><p style={{whiteSpace:'pre-wrap'}}>{draft.body}</p></details>)}
+              {turn.drafts?.some((item:Row)=>!delivered.includes(item.id))&&<div className="m-actions"><Button primary busy={dispatching||state.busy} onClick={()=>void send(turn.drafts)}>Send reviewed emails via Gmail</Button></div>}
+            </div></article>)}
+        </div>
+        {deliveryError&&<p role="alert">{deliveryError}</p>}
+        <Notice state={state}/>
+        <form className="m-form" onSubmit={event=>{event.preventDefault();ask(question)}}>
+          <Field label="Message"><textarea value={question} onChange={event=>setQuestion(event.target.value)} placeholder="What would you like Nexus to do?" rows={3} maxLength={2000} required/></Field>
+          <div className="m-actions"><Button primary busy={state.busy||dispatching} disabled={!question.trim()||mic.listening} type="submit"><Send/> Ask Nexus</Button>
+            {mic.supported&&<Button onClick={()=>mic.toggle(question,setQuestion)}>{mic.listening?'Stop dictation':'Dictate'}</Button>}</div>
+          {mic.error&&<p role="alert">{mic.error}</p>}
+        </form>
+      </div>
+    </Panel>
+    {(relevant.length>0||state.busy)&&<TraceView steps={relevant} connected={traceConnected} requestId={traceRequest} compact plain/>}
+  </>
 }
 
 export function Reports({data}:ViewProps){

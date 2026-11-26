@@ -392,8 +392,11 @@ def google_form_qr_svg(event_id: str) -> str | None:
 
 def suggest_questions(event_name: str, event_type: str, description: str) -> list[dict]:
     """Use Gemini to suggest event-specific registration questions with sensible fallback."""
+    affiliation_questions = [
+        {"title": "College name", "type": "text", "required": True, "options": []},
+        {"title": "Department name", "type": "text", "required": True, "options": []},
+    ]
     default_questions = [
-        {"title": "College / Department", "type": "text", "required": True, "options": []},
         {"title": "Team Name", "type": "text", "required": False, "options": []},
         {
             "title": "Track / Domain",
@@ -429,17 +432,25 @@ def suggest_questions(event_name: str, event_type: str, description: str) -> lis
             "description": description,
             "task": (
                 "Suggest 4-6 short, practical registration questions specific to "
-                "this event (e.g. College/Department, Team Name, Track/Domain, GitHub/Portfolio Link, T-Shirt Size). "
-                "Do not include Full Name or Email — those are added automatically. "
+                "this event (e.g. Team Name, Track/Domain, GitHub/Portfolio Link, T-Shirt Size). "
+                "Do not include Full Name, Email, College, or Department. Those are added automatically. "
                 "For choice questions, provide 3-5 realistic options."
             ),
         }
         fallback = FormQuestions(questions=[FormQuestion(**q) for q in default_questions])
         result, _, _ = intelligence.structured("Relay", payload, FormQuestions, fallback)
-        return [q.model_dump() for q in result.questions] or default_questions
+        excluded = {"college", "college_name", "college_university", "university", "department", "department_name", "college_department"}
+        custom = [q.model_dump() for q in result.questions if _normalize_key(q.title) not in excluded]
+        if custom and not any(
+            re.search(r"(^|_)(tracks?|domains?)(_|$)", _normalize_key(q["title"])) for q in custom
+        ):
+            # The registrations table relies on this answer, so every suggested form asks for it.
+            track = next(q for q in default_questions if q["title"] == "Track / Domain")
+            custom.append(dict(track))
+        return affiliation_questions + (custom or default_questions)
     except Exception:
         logger.debug("Question suggestion unavailable — using default event questions")
-        return default_questions
+        return affiliation_questions + default_questions
 
 
 def poll_form_responses() -> int:

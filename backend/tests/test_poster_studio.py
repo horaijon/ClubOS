@@ -108,9 +108,15 @@ def test_ai_raster_poster_with_openai_and_reference(client, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-123")
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     fake_png = _png_bytes((90, 40, 200))
-    mock_resp = Mock(status_code=200)
+    mock_resp = Mock(status_code=200, is_success=True)
     mock_resp.json.return_value = {"data": [{"b64_json": base64.b64encode(fake_png).decode("ascii")}]}
-    monkeypatch.setattr(poster_studio.httpx, "post", lambda *a, **kw: mock_resp)
+    calls = []
+
+    def post(url, **kwargs):
+        calls.append((url, kwargs))
+        return mock_resp
+
+    monkeypatch.setattr(poster_studio.httpx, "post", post)
 
     eid = client.get("/api/events").json()[0]["id"]
     gen = client.post(f"/api/events/{eid}/posters/generate", json={"prompt": "Neon cyber robotics"})
@@ -119,6 +125,12 @@ def test_ai_raster_poster_with_openai_and_reference(client, monkeypatch):
     assert p["mime_type"] == "image/png"
     assert "OpenAI" in p["theme"]
     assert client.get(p["image_url"]).content == fake_png
+    url, request = calls[-1]
+    assert url.endswith("/images/generations")
+    assert request["json"]["model"] == "gpt-image-2.5-flare"
+    assert "Neon cyber robotics" in request["json"]["prompt"]
+    event = client.get("/api/events").json()[0]
+    assert event["name"] in request["json"]["prompt"]
 
     # Uploading a reference poster invokes images/edits
     ref = client.post(
@@ -128,3 +140,85 @@ def test_ai_raster_poster_with_openai_and_reference(client, monkeypatch):
     )
     assert ref.status_code == 200, ref.text
     assert ref.json()["generated"]["mime_type"] == "image/png"
+    url, request = calls[-1]
+    assert url.endswith("/images/edits")
+    assert request["data"]["model"] == "gpt-image-2.5-flare"
+    assert request["files"][0][0] == "image[]"
+
+
+def test_ai_poster_generation_uses_reference_and_preserves_active_on_failure(client, monkeypatch):
+    from clubos import poster_studio
+    monkeypatch.setenv("OPENAI_API_KEY","test-key")
+    eid = client.get("/api/events").json()[0]["id"]
+    path = f"/api/events/{eid}/posters"
+    source = _png_bytes()
+    reference = client.post(path+'/upload', data={'mode':'reference','generate':'false'},
+                            files={'file':('reference.png',source,'image/png')}).json()
+    assert reference['generated'] is None
+    calls = []
+
+    def render(event, sponsors, deadline, reg_url, prompt, **kwargs):
+        calls.append((prompt, kwargs['reference_bytes']))
+        return _png_bytes((20,70,100)), 'Image provider test', ''
+
+    monkeypatch.setattr(poster_studio, '_generate_ai_raster_poster', render)
+    request = {'prompt':'Paper cutout illustration', 'require_ai':True}
+    assert client.post(path+'/generate',json=request).status_code == 200
+    request['reference_poster_id'] = reference['uploaded_id']
+    result = client.post(path+'/generate',json=request)
+    assert result.status_code == 200
+    assert result.json()['poster']['mime_type'] == 'image/png'
+    assert calls == [('Paper cutout illustration',None),('Paper cutout illustration',source)]
+    before = client.get(path).json()
+    monkeypatch.setattr(poster_studio,'_generate_ai_raster_poster',lambda *args,**kwargs:(None,'','quota'))
+    assert client.post(path+'/generate',json=request).status_code == 502
+    assert client.get(path).json() == before
+
+
+def test_free_ai_poster_generation_with_hf_flux_and_verified_footer(client, monkeypatch):
+    from clubos import poster_studio
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
+    monkeypatch.setattr(poster_studio, "_generate_hf_flux_image", lambda prompt: (_png_bytes((20, 180, 220)), "FLUX.1-schnell (Free AI)"))
+
+    eid = client.get("/api/events").json()[0]["id"]
+    res = client.post(
+        f"/api/events/{eid}/posters/generate",
+        json={"prompt": "Retro 80s synthwave neon arcade poster", "require_ai": True},
+    )
+    assert res.status_code == 200, res.text
+    poster = res.json()["poster"]
+    assert poster["mime_type"] == "image/png"
+    assert "FLUX" in poster["theme"]
+    img_res = client.get(poster["image_url"])
+    assert img_res.status_code == 200
+    assert img_res.headers["content-type"] == "image/png"
+    with Image.open(io.BytesIO(img_res.content)) as im:
+        assert im.size == (1080, 1350)
+
+
+def test_cloudflare_workers_ai_poster_provider(client, monkeypatch):
+    import base64
+    from unittest.mock import Mock
+    from clubos import poster_studio
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "cf-acc-123")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "cf-tok-456")
+
+    fake_png = _png_bytes((180, 90, 240))
+    mock_resp = Mock(status_code=200, is_success=True, headers={"content-type": "application/json"})
+    mock_resp.json.return_value = {"result": {"image": base64.b64encode(fake_png).decode("ascii")}}
+    monkeypatch.setattr(poster_studio.httpx, "post", lambda *a, **kw: mock_resp)
+
+    eid = client.get("/api/events").json()[0]["id"]
+    res = client.post(
+        f"/api/events/{eid}/posters/generate",
+        json={"prompt": "Bauhaus minimalist geometric poster", "require_ai": True},
+    )
+    assert res.status_code == 200, res.text
+    assert "Cloudflare" in res.json()["poster"]["theme"]
+    assert res.json()["poster"]["mime_type"] == "image/png"

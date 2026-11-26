@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS registration_answers (
 
 FIELDS = {
     'team_name': 'Team name', 'team_size': 'Team size', 'track': 'Track',
-    'github': 'GitHub link', 'college': 'College / university', 'diet': 'Dietary requirements',
+    'github': 'GitHub link', 'college': 'College name', 'department': 'Department name', 'diet': 'Dietary requirements',
     'experience': 'Experience level', 'accessibility': 'Accessibility requirements',
 }
 
@@ -99,6 +99,18 @@ def public_form(c, slug):
         raise HTTPException(404, 'Registration form unavailable.')
     gf = _google_form_row(c, row['event_id'])
     form = metadata(row, gf)
+    decoded=c.execute('SELECT details FROM event_briefs WHERE event_id=?',(row['event_id'],)).fetchone()
+    if decoded:
+        brief=json.loads(decoded['details'])
+        form['team_rules']=brief.get('team_rules','')
+        form['tracks']=brief.get('tracks',[])
+    from .disruptions import history
+    recent={}
+    for disruption in history(c,row['event_id']):
+        for change in disruption['changes']:
+            if change['field'] in ('Venue','Registration cutoff','Eligibility cutoff','Capacity cutoff','Event status','Cancelled track','Registration status'):
+                recent.setdefault(change['field'],{key:change[key] for key in ('field','before','after')})
+    form['disruption_updates']=list(recent.values())
     form.pop('event_id', None)
     return form
 

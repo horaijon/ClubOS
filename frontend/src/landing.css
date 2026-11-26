@@ -161,3 +161,6 @@
   .hero-funding{top:61%}
   .art-recovery{font-size:.75rem}
 }
+
+.entry-panel .entry-google{width:100%;justify-content:center;margin-top:24px;color:var(--public-ink);background:#fff;border:2px solid var(--public-ink);box-shadow:3px 3px 0 var(--public-ink);font-weight:800;text-decoration:none}
+.entry-google-note{margin-top:10px;color:#535561;font-size:.8125rem;text-align:center}

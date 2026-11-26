@@ -4,6 +4,11 @@ import { createRoot } from 'react-dom/client';
 import Entry from './Entry';
 import './styles.css';
 import './theme.css';
+import './brand.css';
+import './brutal.css';
+import './modules.css';
+import './launch.css';
+import './polish.css';
 
 const PublicRegistration=lazy(()=>import('./PublicRegistration'));
 const registration=location.pathname.match(/^\/register\/([a-f0-9]+)\/?$/);

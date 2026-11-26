@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE TABLE IF NOT EXISTS members (id TEXT PRIMARY KEY, club_id TEXT REFERENCES clubs(id), name TEXT NOT NULL, role TEXT NOT NULL, department TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, club_id TEXT NOT NULL REFERENCES clubs(id), name TEXT NOT NULL, type TEXT NOT NULL, description TEXT NOT NULL, venue TEXT NOT NULL, start_date TEXT NOT NULL, end_date TEXT NOT NULL, target INTEGER NOT NULL CHECK(target>0), initial_budget INTEGER NOT NULL CHECK(initial_budget>=0), sponsorship_target INTEGER NOT NULL CHECK(sponsorship_target>=0), college TEXT NOT NULL, goals TEXT NOT NULL, requirements TEXT NOT NULL, constraints_text TEXT NOT NULL, is_demo INTEGER DEFAULT 0, registration_milestone INTEGER DEFAULT 0, milestone_date TEXT, created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS event_briefs (event_id TEXT PRIMARY KEY REFERENCES events ON DELETE CASCADE, prompt TEXT NOT NULL, details TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS team (event_id TEXT REFERENCES events ON DELETE CASCADE, member_id TEXT REFERENCES members, PRIMARY KEY(event_id,member_id));
 CREATE TABLE IF NOT EXISTS milestones (id TEXT PRIMARY KEY, event_id TEXT REFERENCES events ON DELETE CASCADE, title TEXT, due_date TEXT);
 CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, name TEXT NOT NULL, industry TEXT NOT NULL, description TEXT NOT NULL, tags TEXT NOT NULL, relationship TEXT DEFAULT '', sponsorship_type TEXT DEFAULT 'Financial', event_scope TEXT REFERENCES events ON DELETE CASCADE);
@@ -39,6 +40,36 @@ CREATE TABLE IF NOT EXISTS workflows (id TEXT PRIMARY KEY, event_id TEXT REFEREN
 CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, event_id TEXT REFERENCES events ON DELETE CASCADE, workflow_id TEXT REFERENCES workflows ON DELETE CASCADE, agent TEXT, trigger TEXT, tool TEXT, summary TEXT, mode TEXT, status TEXT, created_at TEXT);
 CREATE TABLE IF NOT EXISTS risks (id TEXT PRIMARY KEY, event_id TEXT REFERENCES events ON DELETE CASCADE, fingerprint TEXT, title TEXT, description TEXT, severity TEXT, source TEXT, impact TEXT, recommendation TEXT, agents TEXT, status TEXT DEFAULT 'Open', created_at TEXT, UNIQUE(event_id,fingerprint));
 CREATE TABLE IF NOT EXISTS approvals (id TEXT PRIMARY KEY, event_id TEXT REFERENCES events ON DELETE CASCADE, risk_id TEXT REFERENCES risks ON DELETE CASCADE, workflow_id TEXT REFERENCES workflows ON DELETE CASCADE, title TEXT, description TEXT, actions TEXT, status TEXT DEFAULT 'Pending', created_at TEXT, decided_at TEXT, basis_balance INTEGER);
+CREATE TABLE IF NOT EXISTS copilot_outbox (id TEXT PRIMARY KEY, event_id TEXT NOT NULL REFERENCES events ON DELETE CASCADE, sponsor_id TEXT NOT NULL REFERENCES sponsors ON DELETE CASCADE, message TEXT NOT NULL, status TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS disruptions (id TEXT PRIMARY KEY, event_id TEXT NOT NULL REFERENCES events ON DELETE CASCADE, title TEXT NOT NULL, changes TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS decision_appeals (
+    id TEXT PRIMARY KEY,
+    event_id TEXT NOT NULL REFERENCES events ON DELETE CASCADE,
+    target_type TEXT NOT NULL CHECK(target_type IN ('approval','risk','disruption','sponsor','run','poster')),
+    target_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    override_request TEXT DEFAULT '',
+    status TEXT NOT NULL CHECK(status IN ('Flagged','Under Review','Overridden','Dismissed')),
+    resolution_note TEXT DEFAULT '',
+    submitted_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_appeals_event ON decision_appeals(event_id,target_type,target_id);
+CREATE TABLE IF NOT EXISTS decision_audit_logs (
+    id TEXT PRIMARY KEY,
+    event_id TEXT NOT NULL REFERENCES events ON DELETE CASCADE,
+    appeal_id TEXT REFERENCES decision_appeals ON DELETE CASCADE,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    from_status TEXT DEFAULT '',
+    to_status TEXT NOT NULL,
+    note TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_audit_event ON decision_audit_logs(event_id,created_at);
 CREATE TABLE IF NOT EXISTS activity (id TEXT PRIMARY KEY, event_id TEXT REFERENCES events ON DELETE CASCADE, title TEXT, description TEXT, agent TEXT, created_at TEXT);
 CREATE INDEX IF NOT EXISTS ix_activity_event ON activity(event_id,created_at);
 CREATE INDEX IF NOT EXISTS ix_runs_event ON runs(event_id,created_at);
@@ -89,12 +120,19 @@ def init_db():
         c.execute('PRAGMA journal_mode=WAL')
         c.executescript(SCHEMA + REGISTRATION_SCHEMA + GOOGLE_OAUTH_SCHEMA + GMAIL_SCHEMA + FORMS_SCHEMA + POSTER_SCHEMA)
         for table,column,kind in [
+            ('google_oauth_states','code_verifier',"TEXT DEFAULT ''"),
+            ('google_oauth_states','session_hash',"TEXT DEFAULT ''"),
+            ('accounts','google_sub','TEXT'),
             ('clubs','available_funds','INTEGER NOT NULL DEFAULT 0'),
             ('tasks','completed_at','TEXT'),
             ('approvals','basis_balance','INTEGER'),
             ('sponsors','contact_email',"TEXT DEFAULT ''"),
             ('profiles','contact_email',"TEXT DEFAULT ''"),
             ('profiles','website',"TEXT DEFAULT ''"),
+            ('disruptions','kind',"TEXT DEFAULT 'venue'"),
+            ('disruptions','summary',"TEXT DEFAULT ''"),
+            ('disruptions','actions_taken',"TEXT DEFAULT '[]'"),
+            ('disruptions','notifications',"TEXT DEFAULT '[]'"),
         ]:
             if column not in {row['name'] for row in c.execute(f'PRAGMA table_info({table})')}:
                 c.execute(f'ALTER TABLE {table} ADD COLUMN {column} {kind}')

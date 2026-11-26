@@ -152,6 +152,8 @@ def test_google_form_creation_and_live_response_sync(client, monkeypatch):
             {"title": "Full Name", "questionItem": {"question": {"questionId": "q1"}}},
             {"title": "Email", "questionItem": {"question": {"questionId": "q2"}}},
             {"title": "Track / Domain", "questionItem": {"question": {"questionId": "q3"}}},
+            {"title": "College name", "questionItem": {"question": {"questionId": "q4"}}},
+            {"title": "Department name", "questionItem": {"question": {"questionId": "q5"}}},
         ]
     }
     mock_forms.forms().responses().list().execute.return_value = {
@@ -162,6 +164,8 @@ def test_google_form_creation_and_live_response_sync(client, monkeypatch):
                     "q1": {"textAnswers": {"answers": [{"value": "Priya Sharma"}]}},
                     "q2": {"textAnswers": {"answers": [{"value": "priya@college.edu"}]}},
                     "q3": {"textAnswers": {"answers": [{"value": "AI & Agents"}]}},
+                    "q4": {"textAnswers": {"answers": [{"value": "RIT"}]}},
+                    "q5": {"textAnswers": {"answers": [{"value": "Computer Science"}]}},
                 },
             }
         ]
@@ -186,7 +190,21 @@ def test_google_form_creation_and_live_response_sync(client, monkeypatch):
 
     snap = client.get(f"/api/events/{eid}").json()
     assert snap["registration_form"]["is_google_form"] is True
-    assert any(p["email"] == "priya@college.edu" for p in snap["participants"])
+    participant = next(p for p in snap["participants"] if p["email"] == "priya@college.edu")
+    assert participant["answers"]["college_name"] == "RIT"
+    assert participant["answers"]["department_name"] == "Computer Science"
+    assert participant["answers"]["track_domain"] == "AI & Agents"
+
+
+def test_suggested_questions_always_ask_for_track(monkeypatch):
+    from clubos import intelligence
+
+    def without_track(_agent, _payload, schema, _fallback):
+        return schema(questions=[{"title": "Team Name"}]), None, None
+
+    monkeypatch.setattr(intelligence, "structured", without_track)
+    titles = [q["title"] for q in forms_integration.suggest_questions("Hack Night", "Hackathon", "")]
+    assert titles.count("Track / Domain") == 1
 
 
 def test_outreach_list_discover_and_bulk_send(client, monkeypatch):
@@ -240,3 +258,105 @@ def test_outreach_list_discover_and_bulk_send(client, monkeypatch):
     assert blast.status_code == 200, blast.text
     assert blast.json()["sent_count"] == 2
     assert ("alpha@example.com", "Edited Gold Subject") in sent_calls or ("beta@example.com", "Edited Gold Subject") in sent_calls
+
+
+def test_same_google_identity_keeps_club_accounts_isolated(client, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+    from urllib.parse import parse_qs, urlsplit
+
+    def fake_flow(state=None):
+        return SimpleNamespace(
+            authorization_url=lambda **kwargs:(f'https://accounts.google.com/o/oauth2/auth?state={state}', state),
+            fetch_token=lambda **kwargs:None,
+            credentials=SimpleNamespace(token=f'token-{state}',refresh_token='refresh',
+                expiry=datetime.now(timezone.utc)+timedelta(hours=1),scopes=google_oauth.SCOPES),
+        )
+
+    service=MagicMock()
+    service.users.return_value.getProfile.return_value.execute.return_value={'emailAddress':'same-google@example.test'}
+    monkeypatch.setattr(google_oauth,'_build_flow',fake_flow)
+    monkeypatch.setattr(google_oauth,'build',lambda *args,**kwargs:service)
+
+    def signup(browser, email):
+        assert browser.post('/api/auth/signup',json={'name':'Organizer','email':email,'password':'test-password-123'}).status_code==201
+        assert browser.post('/api/auth/club',json={'name':email,'college':'Campus'}).status_code==201
+
+    def start(browser):
+        url=browser.get('/api/integrations/google/auth-url').json()['url']
+        return parse_qs(urlsplit(url).query)['state'][0]
+
+    def connect(browser,state):
+        return browser.get('/api/integrations/google/callback',params={'code':'test-code','state':state},follow_redirects=False).headers['location']
+
+    with TestClient(app) as first, TestClient(app) as second:
+        signup(first,'first@example.test')
+        signup(second,'second@example.test')
+        state=start(first)
+        assert 'no_session' in connect(second,state)
+        assert 'success' in connect(first,state)
+        created=first.post('/api/events',json={'name':'First account event'}).json()
+        assert second.get('/api/events').json()==[]
+        assert 'success' in connect(second,start(second))
+        assert second.get('/api/integrations/google/status').json()['email']==first.get('/api/integrations/google/status').json()['email']
+        assert second.get('/api/events/'+created['id']).status_code==404
+        assert second.get('/api/events').json()==[]
+        second.post('/api/integrations/google/disconnect')
+        assert first.get('/api/integrations/google/status').json()['connected']
+
+
+def test_sign_in_with_google_connects_the_club(client, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+    from urllib.parse import parse_qs, urlsplit
+
+    def fake_flow(state=None):
+        return SimpleNamespace(
+            authorization_url=lambda **kwargs: (f"https://accounts.google.com/o/oauth2/auth?state={state}", state),
+            fetch_token=lambda **kwargs: None,
+            credentials=SimpleNamespace(token="token", refresh_token="refresh", scopes=google_oauth.SCOPES,
+                                        expiry=datetime.now(timezone.utc) + timedelta(hours=1)),
+        )
+
+    who = {"sub": "google-1", "email": "new@example.test", "name": "New Organizer"}
+    monkeypatch.setattr(google_oauth, "_build_flow", fake_flow)
+    monkeypatch.setattr(google_oauth, "_identity", lambda creds: dict(who))
+    base = "http://localhost:8017"
+
+    def sign_in(browser, callback_browser=None):
+        res = browser.get("/api/integrations/google/login", follow_redirects=False)
+        state = parse_qs(urlsplit(res.headers["location"]).query)["state"][0]
+        return (callback_browser or browser).get(
+            "/api/integrations/google/callback", params={"code": "c", "state": state},
+            follow_redirects=False).headers["location"]
+
+    with TestClient(app, base_url=base) as browser, TestClient(app, base_url=base) as other:
+        # A callback opened in a different browser is refused.
+        assert "google_login=error" in sign_in(browser, other)
+        # First sign-in creates the account; creating the club connects Google.
+        assert sign_in(browser) == "/#setup"
+        assert browser.post("/api/auth/club", json={"name": "Club", "college": "Campus"}).status_code == 201
+        assert browser.get("/api/integrations/google/status").json()["email"] == "new@example.test"
+        browser.post("/api/integrations/google/disconnect")
+        browser.post("/api/auth/logout")
+        # Signing in again reconnects automatically.
+        assert sign_in(browser) == "/#dashboard"
+        assert browser.get("/api/integrations/google/status").json()["connected"]
+
+        # An unverified password account is never taken over by email match alone.
+        assert other.post("/api/auth/signup", json={
+            "name": "Someone", "email": "taken@example.test", "password": "test-password-123"}).status_code == 201
+        other.post("/api/auth/logout")
+        who.update(sub="google-2", email="taken@example.test")
+        assert "link_required" in sign_in(other)
+        assert other.get("/api/auth/session").json()["session"] is None
+        # Connecting once while logged in links it.
+        other.post("/api/auth/login", json={"email": "taken@example.test", "password": "test-password-123"})
+        assert other.post("/api/auth/club", json={"name": "Other", "college": "Campus"}).status_code == 201
+        url = other.get("/api/integrations/google/auth-url").json()["url"]
+        monkeypatch.setattr(google_oauth, "build", lambda *args, **kwargs: MagicMock(**{
+            "users.return_value.getProfile.return_value.execute.return_value": {"emailAddress": "taken@example.test"}}))
+        other.get("/api/integrations/google/callback", params={
+            "code": "c", "state": parse_qs(urlsplit(url).query)["state"][0]}, follow_redirects=False)
+        other.post("/api/auth/logout")
+        assert sign_in(other) == "/#dashboard"

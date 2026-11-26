@@ -163,4 +163,6 @@ def create_club(data: ClubDetails, current: Annotated[dict, Depends(account)]):
         club_id = db.insert(conn, "clubs", name=data.name, college=data.college, available_funds=data.available_funds)
         db.insert(conn, "members", club_id=club_id, name=current["name"], role=data.role, department="Planning")
         conn.execute("UPDATE accounts SET club_id=? WHERE id=?", (club_id, current["account_id"]))
+    from . import google_oauth
+    google_oauth.attach_pending(current["account_id"], club_id)
     return {"id": club_id, "name": data.name, "college": data.college}

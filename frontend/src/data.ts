@@ -34,7 +34,26 @@ export interface PosterItem {
   created_by:string; created_at:string; image_url:string;
   design?:Record<string,unknown>;
 }
+export interface AppealRecord {
+  id:string; event_id:string; target_type:string; target_id:string; title:string;
+  reason:string; override_request:string; status:'Flagged'|'Under Review'|'Overridden'|'Dismissed';
+  resolution_note:string; submitted_by:string; created_at:string; updated_at:string;
+}
+export interface AuditLogRecord {
+  id:string; appeal_id?:string|null; actor:string; from_status:string; to_status:string; note:string; created_at:string;
+}
 export interface Snapshot {
+  disruptions?: {
+    id:string;
+    title:string;
+    kind?:string;
+    summary?:string;
+    created_at?:string;
+    changes:{record:string;field:string;before:string;after:string;audience:string}[];
+    actions_taken?:string[];
+    notifications?:{recipient_name:string;recipient_email:string;role:string;subject:string;body:string;status:string;channel:string;detail?:string}[];
+  }[];
+  event_brief?: { prompt: string; details: { tracks?: string[]; team_rules?: string; prizes?: string } } | null;
  registration_form: RegistrationForm|null;
  event: EventRecord; metrics: Metrics; tasks: Task[]; sponsors: SponsorItem[];
  budget:{id:string;category:string;planned:number;actual:number}[]; risks:{id:string;title:string;severity:string;status:string}[];
@@ -42,6 +61,8 @@ export interface Snapshot {
  participants:{id:string;name?:string;email?:string;checked_in?:number;created_at:string;answers?:Record<string,string>}[]; members:{id:string;name:string;role:string}[];
  registration_history?:{date:string;count:number;cumulative:number}[]; activity:{id:string;title:string;description:string;agent:string;created_at:string}[];
  posters?: PosterItem[];
+ appeals?: AppealRecord[];
+ decision_audit_logs?: AuditLogRecord[];
 }
 export interface GoogleStatus {
   connected: boolean;

@@ -1,0 +1,162 @@
+/*
+  Neo-brutalist light skin for the signed-in dashboard: ink outlines, hard offset
+  shadows and flat colour blocks, using the existing ClubOS colours and fonts.
+  Everything is scoped to .shell, so the landing, login and public pages are untouched.
+  Remove the import in main.tsx to undo.
+*/
+body .shell {
+  --nb-edge: 2.5px solid var(--ink);
+  --nb-shadow: 6px 6px 0 var(--ink);
+  --nb-shadow-sm: 3px 3px 0 var(--ink);
+  --nb-soft: #dce4ff;
+  --nb-card: #F2F0EF;
+  --text: var(--ink);
+  --secondary: #1e293b;
+  --muted: #475569;
+  --line: #c3cbe0;
+  --card-border: var(--ink);
+  --card-shadow: var(--nb-shadow);
+}
+
+/* ---------- Sidebar: floating rounded panel in a lighter off-white ---------- */
+body .shell .sidebar.glass {
+  --nb-side: #FBFAF9;
+  --text: var(--ink); --secondary: var(--ink); --muted: #475569; --line: #cfd3de;
+  --raised: var(--nb-soft); --surface: var(--nb-side); --accent: var(--cobalt); --blue-tint: var(--nb-soft);
+  color: var(--ink);
+  background: var(--nb-side);
+  border: var(--nb-edge);
+  border-radius: 22px;
+  box-shadow: var(--nb-shadow-sm);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+body .shell .sidebar .wordmark { color: var(--ink); font-weight: 800; }
+body .shell .sidebar .brand-os { color: var(--cobalt); }
+body .shell .sidebar .logo-mark { box-sizing: content-box; padding: 5px; color: var(--ink); background: var(--lime); border: var(--nb-edge); border-radius: 10px; box-shadow: var(--nb-shadow-sm); }
+body .shell .sidebar .collapse { color: var(--ink); }
+body .shell .sidebar :is(.club-select, .profile) { color: var(--ink); border: var(--nb-edge); border-radius: 12px; box-shadow: var(--nb-shadow-sm); }
+body .shell .sidebar .club-select { background: var(--nb-side); }
+body .shell .sidebar .nav-link { color: var(--ink); font-weight: 700; margin: 8px 0; min-height: 44px; border: 2.5px solid transparent; border-radius: 12px; }
+body .shell .sidebar .nav-link:hover { background: var(--nb-soft); border-color: var(--ink); }
+body .shell .sidebar .nav-link.active { background: var(--lime); color: var(--ink); border-color: var(--ink); box-shadow: var(--nb-shadow-sm); }
+body .shell .sidebar .nav-link.active::before { display: none; }
+body .shell .sidebar .nav-link.active svg { color: var(--ink); }
+body .shell .sidebar .nav-link b { background: var(--cobalt); color: #fff; }
+body .shell .sidebar .profile { --muted: var(--ink); background: #a2b0f2; padding: 10px; width: 100%; margin: 9px 0 14px; }
+body .shell.narrow .sidebar :is(.club-select, .profile) { padding-left: 4px; padding-right: 4px; justify-content: center; }
+body .shell .avatar { background: var(--lime); color: var(--ink); border: 2px solid var(--ink); }
+body .shell .sidebar :focus-visible { outline-color: var(--cobalt); }
+
+/* ---------- Top bar: controls sit straight on the canvas ---------- */
+body .shell .topbar.glass {
+  --text: var(--ink); --secondary: var(--ink); --muted: #334155; --line: var(--ink); --raised: var(--nb-soft); --surface: #fff;
+  color: var(--ink);
+  background: #a2b0f2;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  top: 0;
+  height: 72px;
+}
+body .shell .topbar :is(.command-search, .google-pill, .copilot-btn, .icon-button, .mobile-menu) {
+  background: #fff; color: var(--ink); border: var(--nb-edge); border-radius: 12px; box-shadow: var(--nb-shadow-sm);
+}
+body .shell .topbar .copilot-btn { background: var(--lime); font-weight: 800; }
+body .shell .topbar .command-search kbd { border: 1.5px solid var(--ink); background: var(--nb-soft); color: var(--ink); }
+body .shell .topbar .notifications i { background: var(--cobalt); box-shadow: 0 0 0 2px #fff; }
+body .shell .topbar :focus-visible { outline-color: var(--cobalt-deep); }
+
+/* ---------- Headings ---------- */
+body .shell .main-content :is(.m-head, .mc-title-group, .dash-heading, .page-intro) h1 { color: var(--ink); font-weight: 800; letter-spacing: -.045em; }
+body .shell .main-content .workspace-empty h1 { color: var(--ink); text-shadow: none; }
+
+/* ---------- Cards ---------- */
+body .shell :is(.m-panel, .m-stat, .m-card, .mc-kpi-card, .mc-panel, .dash-panel, .metric, .trace-panel, .m-generator),
+body .shell .main-content > .event-options,
+body .shell .main-content > .m-view > .m-grid > .m-empty {
+  border: var(--nb-edge);
+  border-radius: 20px;
+  box-shadow: var(--nb-shadow);
+}
+body .shell .mc-kpi-card :is(.mc-kpi-agent, .mc-kpi-sub) { color: var(--secondary); }
+body .shell .m-view .m-stats .m-stat :is(span, small) { color: var(--secondary); }
+body .shell :is(.mc-kpi-card, .m-stat, .m-card) { transition: transform .15s ease, box-shadow .15s ease; }
+body .shell :is(.mc-kpi-card, .m-stat, .m-card):hover { transform: translate(-2px, -2px); box-shadow: 8px 8px 0 var(--ink); }
+body .shell :is(.mc-agent-pill, .mc-approval-card, .mc-banner-info, .m-notice) { border: 2px solid var(--ink); border-radius: 14px; box-shadow: var(--nb-shadow-sm); }
+body .shell :is(.mc-kpi-icon, .mc-agent-pill > svg, .m-pill, .mc-mini-pill, .mc-meta-pill, .mc-agent-status, .mc-impact-chip, .dash-event-context > span) { border: 1.5px solid var(--ink); }
+body .shell :is(.m-pill, .mc-mini-pill, .mc-meta-pill, .mc-agent-status, .mc-impact-chip) { font-weight: 700; }
+body .shell :is(.mc-progress, .readiness-track) { height: 12px; background: #fff; border: 1.5px solid var(--ink); border-radius: 99px; overflow: hidden; }
+
+/* ---------- Every card is the same off-white ---------- */
+body .shell .main-content :is(.m-panel, .m-stat, .m-card, .mc-kpi-card, .mc-panel, .dash-panel, .metric, .trace-panel, .m-generator, .m-empty, .m-column, .m-item, .mc-agent-pill, .mc-approval-card, .mc-feed-item, .mc-banner-info, .m-notice, .event-options, .readiness-board),
+body .shell .m-view .m-stats .m-stat:nth-child(n),
+body .shell :is(.shell-dialog, .m-dialog) :is(.m-panel, .m-stat, .m-card, .m-item, .m-notice, .trace-panel),
+body .shell :is(.shell-dialog, .m-dialog) { background: var(--nb-card); }
+body .shell .main-content .m-table th { background: transparent; }
+
+/* ---------- Buttons ---------- */
+body .shell :is(.m-btn, .subtle-button, .brand-button, .mc-new-event-btn, .mc-link-pill, .event-report-button, .option-row, .create-option) {
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  box-shadow: var(--nb-shadow-sm);
+  font-weight: 700;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+body .shell :is(.m-btn, .subtle-button, .brand-button, .mc-new-event-btn, .mc-link-pill, .event-report-button, .option-row, .create-option, .copilot-btn, .command-search, .google-pill):not(:disabled):hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); }
+body .shell :is(.m-btn, .subtle-button, .brand-button, .mc-new-event-btn, .mc-link-pill, .event-report-button, .option-row, .create-option, .copilot-btn, .command-search, .google-pill):not(:disabled):active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+body .shell :is(.m-btn, .subtle-button, .brand-button):disabled { box-shadow: none; }
+body .shell :is(.m-view .m-btn.primary, .mc-approval-actions .m-btn.approve-btn, .mc-card-actions .m-btn.primary, .mc-new-event-btn, .brand-button) { background: var(--lime); border-color: var(--ink); color: var(--ink); }
+body .shell .icon-button { border: 2px solid var(--ink); border-radius: 10px; }
+
+/* ---------- Tabs and segmented controls ---------- */
+body .shell :is(.m-view .m-tabs, .dash-period) { background: #fff; border: var(--nb-edge); border-radius: 14px; box-shadow: var(--nb-shadow-sm); padding: 4px; gap: 4px; }
+body .shell :is(.m-tabs, .dash-period) button { border: 2px solid transparent; border-radius: 9px; font-weight: 700; }
+body .shell :is(.m-view .m-tabs, .m-dialog .m-tabs, .dash-period) button[aria-pressed="true"] { background: var(--lime); color: var(--ink); border-color: var(--ink); box-shadow: none; }
+
+/* ---------- Forms and tables ---------- */
+body .shell :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]), select, textarea) { border: 2px solid var(--ink); border-radius: 10px; }
+body .shell :is(.search-field, .command-search) input { border: 0; }
+body .shell :is(input, select, textarea):focus-visible { outline: 3px solid var(--cobalt); outline-offset: 2px; }
+body .shell .m-table th { color: var(--ink); font-family: var(--font-ui); font-weight: 800; border-bottom: var(--nb-edge); }
+body .shell .m-table td { border-bottom: 1.5px solid var(--ink); }
+
+body .shell .m-view .m-stats .m-stat:nth-child(n) { border-color: var(--ink); }
+body .shell .m-view .m-search { background: #fff; border: 2px solid var(--ink); border-radius: 10px; box-shadow: var(--nb-shadow-sm); }
+body .shell .m-view .m-search input { border: 0; border-radius: 0; box-shadow: none; }
+body .shell .m-view .m-search:focus-within { outline: 3px solid var(--cobalt); outline-offset: 2px; }
+body .shell .m-view .m-search input:focus-visible { outline: 0; }
+
+/* ---------- Charts ---------- */
+body .shell .recharts-bar-rectangle path { stroke: var(--ink); stroke-width: 1.5px; }
+
+/* ---------- Mission Control: agent strip sits below the first screen ---------- */
+body .shell .mc-first-screen { min-height: calc(100dvh - 104px); align-content: start; }
+
+/* ---------- Scrolling tables (registrants, budget allocations) ---------- */
+body .shell .m-view .m-table :is(th, td, td strong, td small, button) { font-family: var(--font-ui); }
+body .shell .m-view .m-scrolltable { --rows: 6.5; max-height: calc(42px + var(--rows) * 54px); overflow: auto; scrollbar-width: thin; scrollbar-color: #64748b transparent; border-radius: 0 0 17px 17px; }
+body .shell .m-view .m-scrolltable.is-tall { --rows: 9.5; }
+body .shell .m-view .m-scrolltable .m-table th { position: sticky; top: 0; z-index: 1; height: 42px; padding-top: 8px; padding-bottom: 8px; background: var(--nb-card); border-bottom: 0; box-shadow: inset 0 -2px 0 var(--ink); font-size: 12px; }
+body .shell .m-view .m-scrolltable .m-table td { height: 54px; padding-top: 6px; padding-bottom: 6px; font-size: 13px; }
+body .shell .m-view .m-scrolltable .m-table td strong { display: flex; align-items: center; gap: 9px; font-weight: 700; }
+body .shell .m-view .m-scrolltable .m-bar { margin-top: 6px; }
+
+/* ---------- Dialogs ---------- */
+body .shell :is(.shell-dialog, .m-dialog) { border: 3px solid var(--ink); border-radius: 20px; box-shadow: 8px 8px 0 var(--ink); }
+body .shell .shell-dialog :is(.dialog-top), body .shell .m-dialog .m-dialoghead { background: var(--nb-soft); color: var(--ink); border-bottom: var(--nb-edge); }
+body .shell .shell-dialog .dialog-top h2, body .shell .m-dialog .m-dialoghead h2 { color: var(--ink); }
+
+@media (max-width: 670px) {
+  body .shell .topbar.glass { height: 60px; margin: 0; border-radius: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body .shell * { transition: none !important; }
+}
+
+/* The top bar spans the full width so scrolled content never peeks beside it */
+@media (min-width: 671px) {
+  body .shell .topbar.glass { margin: 0; padding-left: clamp(20px, 2.5vw, 40px); padding-right: clamp(20px, 2.5vw, 40px); }
+}

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { Activity, ArrowRight, Bell, Bot, Building2, CalendarDays, ChartNoAxesCombined, Check, ChevronDown, ChevronRight, ChevronsUpDown, CircleAlert, ClipboardCheck, FolderKanban, Handshake, Image, LayoutDashboard, ListChecks, LoaderCircle, Menu, PanelLeftClose, Plus, RadioTower, Search, Settings2, ShieldAlert, Sparkles, TrendingUp, Unplug, Users, Wallet, X, type LucideIcon } from 'lucide-react';
+import { Activity, ArrowRight, Bell, Bot, Building2, CalendarDays, ChartNoAxesCombined, Check, ChevronDown, ChevronRight, ChevronsUpDown, CircleAlert, ClipboardCheck, FolderKanban, Handshake, Image, LayoutDashboard, ListChecks, LoaderCircle, Menu, PanelLeftClose, Plus, RadioTower, Search, Settings2, ShieldAlert, Sparkles, TrendingUp, Unplug, Users, Wallet, X, type LucideIcon, LogOut } from 'lucide-react';
 import { LogoMark } from './Identity';
 import { Dialog } from './Dialog';
 import Dashboard from './Dashboard';
@@ -11,13 +11,12 @@ import { api, save, saved, type AuthSession, type EventOption, type GoogleStatus
 const Modules = lazy(() => import('./Modules'));
 type Nav = [string, string, LucideIcon];
 const primary: Nav[] = [
-  ['dashboard', 'Mission Control', LayoutDashboard], ['registrations', 'Registrations & Form', Users],
+  ['dashboard', 'Mission Control', LayoutDashboard], ['copilot', 'AI Copilot', Sparkles], ['registrations', 'Registrations & Form', Users],
   ['posters', 'Poster Studio', Image], ['sponsors', 'Sponsorships', Handshake], ['finance', 'Plan & Budget', Wallet],
 ];
 const items: Nav[] = [...primary, ['approvals', 'Approvals & Risks', ClipboardCheck], ['agents', 'Agent Orchestrator', Bot], ['tasks', 'Tasks & Ops', ListChecks], ['workspace', 'Workspace settings', Settings2],
 ['trends', 'Event trends', TrendingUp], ['events', 'Events', CalendarDays], ['reports', 'Reports', ChartNoAxesCombined],
-['risks', 'Risk register', ShieldAlert], ['operations', 'Participants', Users], ['marketing', 'Campaign drafts', RadioTower],
-['copilot', 'AI Copilot', Sparkles]];
+['risks', 'Risk register', ShieldAlert], ['operations', 'Participants', Users], ['marketing', 'Campaign drafts', RadioTower]];
 const valid = new Set(items.map(item => item[0]));
 function currentPage() { const id = location.hash.slice(1).split('?')[0]; return valid.has(id) ? id : 'dashboard'; }
 const eventUrl = (id: string) => '/api/events/' + encodeURIComponent(id);
@@ -113,7 +112,7 @@ export default function App({ session, onExit, exitPending, sessionError }: {
   const act = useCallback(async (type: string, payload: Record<string, any> = {}) => {
     const eid = latest.current; if (!eid) throw new Error('Select an event to continue.');
     const request = crypto.randomUUID();
-    const tracked = /^(demo_|agent_check|sponsor_stage|approve|reject|withdraw|budget_optimize|prepare_outreach|simulate_reply|add_expense|edit_expense|copilot|risk_scan|outreach|proposal|followup|delay_task|analyze_|generate_marketing|send_real_email|add_demo_sponsor)/.test(type);
+    const tracked = /^(campus_disruption|retry_disruption_emails|appeal_decision|update_appeal_status|demo_|agent_check|sponsor_stage|approve|reject|withdraw|budget_optimize|prepare_outreach|simulate_reply|add_expense|edit_expense|delete_expense|copilot|risk_scan|outreach|proposal|followup|delay_task|analyze_|generate_marketing|send_real_email|add_demo_sponsor)/.test(type);
     if (tracked) setExecution({ event: eid, request, running: true });
     try {
       const result = await api<any>(eventUrl(eid) + '/actions', { method: 'POST', body: JSON.stringify({ type, payload, request_id: request }) });
@@ -170,14 +169,14 @@ export default function App({ session, onExit, exitPending, sessionError }: {
                 : 'Connect Google (Gmail & Forms)'}
             </span>
           </button>
-          <button className="notifications icon-button" aria-label="Notifications" onClick={() => open('notifications')}><Bell size={17} />{(data?.metrics.pending_approvals || data?.metrics.active_risks) ? <i /> : null}</button>
+          <button className="notifications icon-button" aria-label="Notifications" onClick={() => open('notifications')}><Bell size={17} />{(data?.metrics.pending_approvals || data?.metrics.active_risks || data?.disruptions?.length) ? <i /> : null}</button>
           <span className="toolbar-divider" />
           <button className="copilot-btn" disabled={!data} onClick={() => open('copilot')}><Sparkles size={15} /><span>AI Copilot</span></button>
         </div>
       </header>
       <main className="main-content" id="main-content" tabIndex={-1}>
         {(error || sessionError) && <div className="error-banner" role="alert"><CircleAlert size={17} />{error || sessionError}{error && <button onClick={() => setRetry(n => n + 1)}>Retry</button>}</div>}
-        {traceRequest && data && page !== 'dashboard' && page !== 'agents' && <div className="trace-banner"><button className="subtle-button" onClick={() => open('trace')}><Activity size={15} />{execution.running ? 'Workflow running · View trace' : 'View latest workflow trace'}</button></div>}
+        {traceRequest && data && page !== 'dashboard' && page !== 'agents' && page !== 'posters' && <div className="trace-banner"><button className="subtle-button" onClick={() => open('trace')}><Activity size={15} />{execution.running ? 'Workflow running · View trace' : 'View latest workflow trace'}</button></div>}
         {page === 'events' ? <><div className="page-intro"><div><h1>Events</h1><p>Select an event or launch a new plan.</p></div><button className="brand-button" onClick={() => open('wizard')}><Plus size={15} />Create event</button></div>{chooseEvents}</> : data ? (page === 'dashboard' ? <MissionControl data={data} navigate={navigate} act={act} refresh={refresh} {...traceProps} onCreate={() => open('wizard')} /> : page === 'trends' ? <Dashboard data={data} navigate={navigate} act={act} {...traceProps} view='trends' /> : <Suspense fallback={<div className="shell-loading" role="status">Opening {name}…</div>}><Modules key={id + page} page={page} data={data} navigate={navigate} act={act} refresh={refresh} {...traceProps} /></Suspense>) : booting || id && !error ? <div className="shell-loading" role="status"><LoaderCircle className="spin" size={20} />Opening workspace…</div> : !error ? <section className="workspace-empty">
           <span className="workspace-empty-icon"><CalendarDays size={24} strokeWidth={1.6} /></span>
           <h1>Your next event starts here</h1>
@@ -200,7 +199,7 @@ export default function App({ session, onExit, exitPending, sessionError }: {
             Add <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>, and <code>GOOGLE_REDIRECT_URI</code> in <code>.env</code> and restart the backend to enable one-click Google OAuth for live Gmail & Google Forms.
           </p>
           <p style={{ margin: 0, fontSize: 12, color: '#64748B' }}>
-            Redirect URI: <code>http://localhost:8017/api/integrations/google/callback</code>
+            Redirect URI: <code>{location.origin}/api/integrations/google/callback</code>
           </p>
         </>}
       </div>
@@ -210,9 +209,9 @@ export default function App({ session, onExit, exitPending, sessionError }: {
     {modal === 'events' && <Dialog compact title="Switch event" onClose={() => setModal(null)}>{chooseEvents}</Dialog>}
     {modal === 'wizard' && <Wizard data={data} college={accountClub.college} clubFunds={accountClub.available_funds || 0} jobKey={jobKey} close={() => setModal(null)} complete={complete} />}
     {modal === 'search' && <Dialog compact title="Search workspace" onClose={() => setModal(null)}><div className="search-field"><Search size={18} /><input autoFocus aria-label="Search pages, tasks, sponsors, and risks" placeholder="Search pages, tasks, sponsors, risks…" value={query} onChange={e => setQuery(e.target.value)} /></div><div className="search-results">{searchItems.map((r, i) => <button key={r.kind + r.key + i} onClick={() => navigate(r.key)}><span>{r.label}</span><small>{r.kind}</small><ArrowRight size={13} /></button>)}{!searchItems.length && <p className="dash-empty">No matches for “{query}”.</p>}</div></Dialog>}
-    {modal === 'notifications' && <Dialog compact title="Notifications" onClose={() => setModal(null)}><div className="event-options">{data?.approvals.filter(a => a.status?.toLowerCase() === 'pending').map(a => <button className="option-row" key={a.id} onClick={() => navigate('approvals')}><ClipboardCheck size={16} /><span>{a.title}</span><ChevronRight size={14} /></button>)}{data?.risks.filter(r => !['closed', 'resolved'].includes(r.status?.toLowerCase())).map(r => <button className="option-row" key={r.id} onClick={() => navigate('risks')}><ShieldAlert size={16} /><span>{r.title}</span><ChevronRight size={14} /></button>)}{!data?.metrics.pending_approvals && !data?.metrics.active_risks && <p className="dash-empty">No pending approvals or open risks.</p>}</div></Dialog>}
+    {modal === 'notifications' && <Dialog compact title="Notifications" onClose={() => setModal(null)}><div className="event-options">{data?.approvals.filter(a => a.status?.toLowerCase() === 'pending').map(a => <button className="option-row" key={a.id} onClick={() => navigate('approvals')}><ClipboardCheck size={16} /><span>{a.title}</span><ChevronRight size={14} /></button>)}{data?.risks.filter(r => !['closed', 'resolved'].includes(r.status?.toLowerCase())).map(r => <button className="option-row" key={r.id} onClick={() => navigate('risks')}><ShieldAlert size={16} /><span>{r.title}</span><ChevronRight size={14} /></button>)}{data?.disruptions?.slice(0,5).map(alert=><button className="option-row" key={alert.id} onClick={()=>navigate('dashboard')}><ShieldAlert size={16}/><span>{alert.title} · {alert.changes.length} changes</span><ChevronRight size={14}/></button>)}{!data?.disruptions?.length && !data?.metrics.pending_approvals && !data?.metrics.active_risks && <p className="dash-empty">No pending approvals or open risks.</p>}</div></Dialog>}
     {modal === 'workspace' && <Dialog compact title="Club workspace" onClose={() => setModal(null)}><div className="event-options"><div className="option-row"><Building2 size={17} /><span>{club}</span><Check size={15} /></div><button className="option-row" onClick={() => navigate('workspace')}><Settings2 size={16} /><span>Workspace settings</span><ChevronRight size={15} /></button></div></Dialog>}
-    {modal === 'profile' && <Dialog compact title="Organizer profile" onClose={() => setModal(null)}><div className="profile-sheet"><span className="avatar">{initials}</span><div><strong>{displayName}</strong><p>{organizer?.role || session.role} · {club}</p></div></div><button className="option-row" onClick={() => navigate('workspace')}><Users size={15} /><span>View organizing team</span><ChevronRight size={15} /></button><button className="option-row" disabled={exitPending} onClick={onExit}><span>{session.demo ? 'Exit demo' : 'Log out'}</span><ChevronRight size={14} /></button>{sessionError && <p className="dash-empty" role="alert">{sessionError}</p>}</Dialog>}
+    {modal === 'profile' && <Dialog compact title="Organizer profile" onClose={() => setModal(null)}><div className="profile-sheet"><span className="avatar">{initials}</span><div><strong>{displayName}</strong><p>{organizer?.role || session.role} · {club}</p></div></div><div className="profile-actions"><button className="option-row" onClick={() => navigate('workspace')}><Users size={15} /><span>View organizing team</span><ChevronRight size={15} /></button><button className="option-row" disabled={exitPending} onClick={onExit}><LogOut size={15} /><span>{session.demo ? 'Exit demo' : 'Log out'}</span><ChevronRight size={15} /></button></div>{sessionError && <p className="dash-empty" role="alert">{sessionError}</p>}</Dialog>}
     {toast && <div className="shell-toast glass" role="status"><Check size={15} />{toast}<button aria-label="Dismiss notification" onClick={() => setToast('')}><X size={13} /></button></div>}
   </div>
 }

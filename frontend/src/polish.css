@@ -1,0 +1,89 @@
+/*
+  Professional finish: one type scale, calm surfaces and consistent controls.
+  Loaded last. Remove its import in main.tsx to return to the earlier look.
+*/
+:root { --ui-line:#e2e8f0; --ui-line-strong:#cbd5e1; --ui-canvas:#f4f6fb; --ui-shadow:0 1px 2px rgba(15,23,42,.05), 0 4px 14px rgba(15,23,42,.05); }
+body { font-family:var(--font-ui); -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
+
+body .shell {
+  --nb-edge:1px solid var(--ui-line); --nb-shadow:var(--ui-shadow); --nb-shadow-sm:0 1px 2px rgba(15,23,42,.06);
+  --nb-card:#fff; --nb-soft:#eef2ff; --line:var(--ui-line); --card-border:var(--ui-line); --muted:#64748b; --secondary:#334155;
+}
+body:has(.shell) { background:var(--ui-canvas); }
+body .shell { background:var(--ui-canvas); background-image:none; font-size:14px; line-height:1.55; }
+
+/* ---------- Navigation ---------- */
+body .shell .sidebar.glass { --nb-side:#fff; border-radius:16px; }
+body .shell .sidebar .nav-link { min-height:40px; margin:3px 0; border:1px solid transparent; font-size:14px; font-weight:600; color:#334155; }
+body .shell .sidebar .nav-link:hover { border-color:transparent; background:#f1f5f9; }
+body .shell .sidebar .nav-link.active { border-color:#bbe33c; box-shadow:none; color:var(--ink); font-weight:800; }
+body .shell .sidebar .logo-mark { border:0; box-shadow:none; }
+body .shell .sidebar .profile { background:#f1f5f9; }
+body .shell .avatar { border:0; }
+body .shell .topbar.glass { background:var(--ui-canvas); }
+body .shell .topbar :is(.command-search, .google-pill, .copilot-btn, .icon-button, .mobile-menu) { border:1px solid var(--ui-line-strong); border-radius:10px; font-size:13.5px; }
+body .shell .topbar .copilot-btn { border-color:#bbe33c; font-weight:800; }
+body .shell .topbar .command-search kbd { border:1px solid var(--ui-line-strong); }
+
+/* ---------- Type scale ---------- */
+body .shell .main-content :is(.m-head, .mc-title-group, .dash-heading, .page-intro) h1 { margin-bottom:4px; color:var(--ink); font-size:28px; font-weight:800; line-height:1.2; letter-spacing:-.025em; }
+body .shell .main-content :is(.m-head, .dash-heading, .page-intro) p { margin:0; font-size:14.5px; font-weight:500; color:#475569; }
+body .shell :is(.m-view, .dash-workspace, .m-dialog) :is(.m-panelhead h2, .mc-panel-head h2, .dash-panel h2) { font-size:16.5px; font-weight:800; letter-spacing:-.01em; color:var(--ink); }
+body .shell .m-view h3 { font-size:16px; font-weight:800; letter-spacing:-.005em; color:var(--ink); }
+body .shell .m-view :is(.m-card, .m-pad) > p, body .shell .m-view .m-copy { font-size:14px; font-weight:500; line-height:1.6; color:#475569; }
+body .shell .m-view .m-sub { font-size:13px; font-weight:500; color:#64748b; }
+body .shell .m-view .m-stats .m-stat > span { font-size:13px; font-weight:700; color:#64748b; }
+body .shell .m-view .m-stats .m-stat strong { font-size:28px; font-weight:800; letter-spacing:-.025em; font-variant-numeric:tabular-nums; }
+body .shell .m-view .m-stats .m-stat small { font-size:12.5px; font-weight:500; color:#64748b; }
+body .shell .m-view .mc-kpi-number { font-size:32px; font-weight:800; letter-spacing:-.03em; }
+body .shell .m-view .mc-kpi-title { font-size:15.5px; font-weight:800; }
+body .shell .m-view .m-table th { font-family:var(--font-ui); font-size:12.5px; font-weight:700; letter-spacing:.01em; color:#64748b; border-bottom:1px solid var(--ui-line-strong); }
+body .shell .m-view .m-table td { font-size:13.5px; font-weight:500; color:#1e293b; border-bottom:1px solid var(--ui-line); }
+body .shell .m-view .m-table td strong { font-weight:700; color:var(--ink); }
+body .shell .m-view .m-scrolltable .m-table th { box-shadow:inset 0 -1px 0 var(--ui-line-strong); }
+body .shell :is(.m-view, .m-dialog) .m-field { font-size:13.5px; font-weight:700; color:var(--ink); }
+body .shell :is(.m-view, .m-dialog) .m-field :is(input, select, textarea) { font-size:14px; font-weight:500; }
+
+/* ---------- Surfaces ---------- */
+body .shell :is(.m-panel, .m-stat, .m-card, .mc-kpi-card, .mc-panel, .dash-panel, .metric, .trace-panel, .m-generator),
+body .shell .main-content > .event-options,
+body .shell .main-content > .m-view > .m-grid > .m-empty { border:1px solid var(--ui-line); border-radius:14px; box-shadow:var(--ui-shadow); }
+body .shell :is(.mc-kpi-card, .m-stat, .m-card):hover { transform:none; box-shadow:var(--ui-shadow); }
+body .shell .m-view .m-stats .m-stat:nth-child(n) { border-color:var(--ui-line); background:#fff; }
+body .shell .m-view .m-stats .m-stat:first-child { border-top:3px solid #bbe33c; }
+body .shell .mc-kpi-card { border-top:3px solid #bbe33c; }
+body .shell :is(.mc-agent-pill, .mc-approval-card, .mc-banner-info, .m-notice) { border:1px solid var(--ui-line); border-radius:12px; box-shadow:var(--nb-shadow-sm); }
+body .shell .main-content .m-notice.success { background:#ecfdf5; border-color:#a7f3d0; color:#065f46; }
+body .shell .main-content .m-notice.error { background:#fef2f2; border-color:#fecaca; color:#991b1b; }
+body .shell .main-content .mc-banner-info { background:#eef2ff; border-color:#c7d2fe; }
+body .shell .main-content .mc-feed-item { background:transparent; }
+
+/* ---------- Controls ---------- */
+body .shell :is(.m-btn, .subtle-button, .brand-button, .mc-new-event-btn, .mc-link-pill, .event-report-button, .option-row, .create-option) { border:1px solid var(--ui-line-strong); border-radius:9px; box-shadow:var(--nb-shadow-sm); font-weight:700; }
+body .shell :is(.m-view, .m-dialog) .m-btn { font-size:13.5px; }
+body .shell :is(.m-view .m-btn, .subtle-button) { background-color:#fff; color:var(--ink); }
+body .shell :is(.m-btn, .subtle-button, .brand-button, .mc-new-event-btn, .mc-link-pill, .event-report-button, .option-row, .create-option, .copilot-btn, .command-search, .google-pill):not(:disabled):hover { transform:none; border-color:#94a3b8; box-shadow:0 2px 8px rgba(15,23,42,.09); }
+body .shell :is(.m-btn, .subtle-button, .brand-button, .mc-new-event-btn, .mc-link-pill, .event-report-button, .option-row, .create-option, .copilot-btn, .command-search, .google-pill):not(:disabled):active { transform:translateY(1px); box-shadow:none; }
+body .shell :is(.m-view .m-btn.primary, .m-dialog .m-btn.primary, .mc-approval-actions .m-btn.approve-btn, .mc-card-actions .m-btn.primary, .mc-new-event-btn, .brand-button) { background:var(--lime); border-color:#b5dc37; color:var(--ink); }
+body .shell :is(.m-view, .m-dialog) .m-btn.danger { background:#fff; border-color:#fecaca; color:#b91c1c; }
+body .shell .icon-button { border:1px solid var(--ui-line-strong); }
+body .shell :is(.m-view .m-tabs, .m-dialog .m-tabs, .dash-period) { border:1px solid var(--ui-line); border-radius:11px; box-shadow:none; background:#eef1f7; }
+body .shell :is(.m-tabs, .dash-period) button { border:1px solid transparent; font-size:13.5px; font-weight:700; }
+body .shell :is(.m-view .m-tabs, .m-dialog .m-tabs, .dash-period) button[aria-pressed="true"] { background:#fff; border-color:var(--ui-line-strong); color:var(--ink); box-shadow:var(--nb-shadow-sm); }
+body .shell :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]), select, textarea) { border:1px solid var(--ui-line-strong); border-radius:9px; }
+body .shell :is(.search-field, .command-search) input { border:0; }
+body .shell .m-view .m-search { border:1px solid var(--ui-line-strong); box-shadow:none; }
+body .shell .m-view .m-search input { border:0; }
+body .shell :is(.mc-kpi-icon, .mc-agent-pill > svg, .m-pill, .mc-meta-pill, .mc-agent-status, .mc-impact-chip, .dash-event-context > span) { border:1px solid rgba(15,23,42,.12); }
+body .shell :is(.m-pill, .mc-meta-pill, .mc-agent-status, .mc-impact-chip) { font-size:12px; font-weight:700; }
+body .shell :is(.mc-progress, .readiness-track) { height:8px; background:#e9edf5; border:0; }
+body .shell .recharts-bar-rectangle path { stroke-width:0; }
+body .shell :is(.shell-dialog, .m-dialog) { border:1px solid var(--ui-line); border-radius:16px; box-shadow:0 24px 60px rgba(15,23,42,.24); }
+
+/* ---------- Layout ---------- */
+body .shell .main-content > * { max-width:1320px; margin-inline:auto; }
+body .shell .main-content > .m-view { width:100%; }
+
+/* ---------- Sign-in and public pages ---------- */
+body main.site-entry h1 { text-shadow:none; letter-spacing:-.035em; }
+body main.site-entry .entry-step { font-family:var(--font-ui); font-weight:800; letter-spacing:.01em; }

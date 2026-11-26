@@ -18,4 +18,8 @@ if [ ! -f frontend/dist/index.html ]; then
     fi
   )
 fi
-exec .venv/bin/uvicorn clubos.main:app --app-dir backend --host "${CLUBOS_HOST:-127.0.0.1}" --port "${PORT:-8017}"
+# Keep the local listener and its OAuth callback on the configured port.
+if [ -z "${PORT:-}" ]; then
+  PORT=$(.venv/bin/python -c 'from dotenv import dotenv_values; print(dotenv_values(".env").get("PORT") or 8018)')
+fi
+exec .venv/bin/uvicorn clubos.main:app --app-dir backend --host "${CLUBOS_HOST:-127.0.0.1}" --port "${PORT:-8018}"

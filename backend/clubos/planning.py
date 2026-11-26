@@ -8,12 +8,12 @@ from .state import iso, due_in, task, prospects, team, funding
 TOOLS = {
     'FormFlow':{'publish_registration','receive_registration'},
     'OpsLedger':{'build_event_plan'},
-    'Nexus':{'dispatch','consolidate','answer','apply_plan','query_event_state','review_proposal','propose_approval_action','decode_brief'},
+    'Nexus':{'dispatch','consolidate','answer','apply_plan','query_event_state','review_proposal','propose_approval_action','decode_brief','record_appeal'},
     'Atlas':{'plan_tasks','trace_dependencies','reassign','create_task','revise_deliverables'},
     'Ledger':{'allocate_budget','project_balance','review_terms','record_payment','create_sponsor_receivable','update_budget_allocation','record_expense'},
     'Magnet':{'rank_sponsors','draft_outreach','extract_terms','propose_package','follow_up','send_email'},
     'Echo':{'draft_campaign','plan_branding'},
-    'Relay':{'work_checklist','schedule_deliverables','register'},
+    'Relay':{'work_checklist','schedule_deliverables','register','notify_stakeholders'},
     'Sentinel':{'scan','detect','verify','raise_risk_alert'},
     'Canvas':{'generate_poster','revise_poster'},
 }

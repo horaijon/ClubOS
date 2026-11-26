@@ -113,6 +113,8 @@ def discover_outreach_list_route(event_id: str, club: auth.Workspace):
 class AiKeysRequest(BaseModel):
     openai_api_key: str | None = Field(default=None, max_length=300)
     gemini_api_key: str | None = Field(default=None, max_length=300)
+    cloudflare_account_id: str | None = Field(default=None, max_length=200)
+    cloudflare_api_token: str | None = Field(default=None, max_length=300)
 
 
 @router.get("/integrations/ai/status")
@@ -121,6 +123,11 @@ def ai_status_route(club: auth.Workspace):
     return {
         "openai_configured": bool(os.getenv("OPENAI_API_KEY", "").strip()),
         "gemini_configured": bool(os.getenv("GEMINI_API_KEY", "").strip()),
+        "cloudflare_configured": bool(
+            os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
+            and os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
+        ),
+        "free_ai_available": True,
     }
 
 
@@ -142,6 +149,14 @@ def save_ai_keys_route(data: AiKeysRequest, club: auth.Workspace):
         os.environ["GEMINI_API_KEY"] = val
         updates["GEMINI_API_KEY"] = val
         intelligence._cached_client.cache_clear()
+    if data.cloudflare_account_id is not None and data.cloudflare_account_id.strip():
+        val = data.cloudflare_account_id.strip()
+        os.environ["CLOUDFLARE_ACCOUNT_ID"] = val
+        updates["CLOUDFLARE_ACCOUNT_ID"] = val
+    if data.cloudflare_api_token is not None and data.cloudflare_api_token.strip():
+        val = data.cloudflare_api_token.strip()
+        os.environ["CLOUDFLARE_API_TOKEN"] = val
+        updates["CLOUDFLARE_API_TOKEN"] = val
 
     if updates and env_path.parent.exists():
         new_lines = []
@@ -161,6 +176,11 @@ def save_ai_keys_route(data: AiKeysRequest, club: auth.Workspace):
     return {
         "openai_configured": bool(os.getenv("OPENAI_API_KEY", "").strip()),
         "gemini_configured": bool(os.getenv("GEMINI_API_KEY", "").strip()),
+        "cloudflare_configured": bool(
+            os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
+            and os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
+        ),
+        "free_ai_available": True,
         "message": "AI API keys saved.",
     }
 

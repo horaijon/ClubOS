@@ -104,6 +104,20 @@ def expense(f,p,update):
         f.c.execute("UPDATE risks SET status='Resolved' WHERE event_id=? AND fingerprint='funding-gap'",(f.id,))
     return dict(message='Expense saved.')
 
+def delete_expense(f,p):
+    old=scoped(f.c,'expenses',p.get('expense_id'),f.id)
+    cat=scoped(f.c,'budget',old['category_id'],f.id)
+    with f.tool('Ledger','record_expense',dict(category=cat['category'],amount=old['amount'])) as step:
+        f.c.execute('DELETE FROM expenses WHERE id=?',(old['id'],))
+        actual=f.c.execute('SELECT COALESCE(SUM(amount),0) FROM expenses WHERE category_id=?',(cat['id'],)).fetchone()[0]
+        step.update(summary=f'Deleted {recovery.currency(old["amount"])} from {cat["category"]}.',output=dict(actual=actual))
+    if actual<=cat['planned']:
+        f.c.execute("UPDATE risks SET status='Resolved' WHERE event_id=? AND fingerprint=?",(f.id,'overspend:'+cat['id']))
+    if not funding(f.c,f.e)['shortfall']:
+        f.c.execute("UPDATE risks SET status='Resolved' WHERE event_id=? AND fingerprint='funding-gap'",(f.id,))
+    f.note('Expense deleted',old['description'],'Ledger')
+    return dict(message='Expense deleted.')
+
 def campaign(f,p,generate):
     if generate:
         title=required({'title':p.get('title') or 'Campus event announcement'},'title',300)

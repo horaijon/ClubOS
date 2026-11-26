@@ -664,36 +664,369 @@ def _raster_image_prompt(event: dict, sponsors: list[str], deadline: str, reg_ur
         if event.get("end_date") and event["end_date"] != event["start_date"]
         else event["start_date"]
     )
-    sponsor_line = ", ".join(sponsors[:4]) if sponsors else event.get("club", "ClubOS")
+    sponsor_line = ", ".join(sponsors[:4])
     parts = [
-        "Design a stunning, high-craft, modern graphic-design event poster (3:4 portrait aspect ratio) with crisp, legible typography and zero spelling errors.",
+        "Design a portrait event poster with crisp, legible typography.",
     ]
+    if has_ref and has_base:
+        parts.append("The first image is the current poster. The second image is the style reference.")
     if has_ref:
-        parts.append("REFERENCE STYLE INSTRUCTION: Strictly match the visual style, color palette, typography mood, composition, and lighting of the attached reference poster image.")
+        parts.append("REFERENCE STYLE INSTRUCTION: Use the attached reference for palette, hierarchy, typography mood, composition, and lighting. Create fresh artwork for this event. Do not copy the reference’s names, logos, text, or QR codes.")
     if has_base and prompt:
         parts.append(f"EDIT INSTRUCTION: Modify the attached current poster according to the user's request: {prompt}")
     elif prompt:
         parts.append(f"THEME & PROMPT INSTRUCTION: {prompt}")
     parts.extend([
-        "REQUIRED EVENT DETAILS TO INCLUDE CLEARLY ON THE POSTER:",
+        "Use these saved event facts as the source of truth. The design prompt and any attached images guide the visuals only. Copy names, dates, and venue exactly. Do not invent sponsors, prizes, URLs, or QR codes.",
         f"- Event Title: {event['name']}",
-        f"- Subtitle / Theme: {(event.get('description') or event.get('goals') or event.get('type') or '')[:140]}",
+        f"- Subtitle / Theme: {(event.get('description') or event.get('type') or '')[:140]}",
         f"- Hosted by: {event.get('club', '')} · {event.get('college', '')}".strip(" ·"),
         f"- Date: {date_label}",
-        f"- Venue: {event.get('venue') or 'Campus Auditorium'}",
+        f"- Venue: {event['venue']}",
+        f"- Event format: {event['type']}",
+        f"- Expected participants: {event['target']}",
         f"- Registration closes: {deadline}",
-        f"- Sponsors / Partners: {sponsor_line}",
-        "- Include a clean 'Register Now' callout badge.",
     ])
+    if sponsor_line:
+        parts.append(f"- Confirmed sponsors: {sponsor_line}")
+    if reg_url:
+        parts.append(f"- Registration: {reg_url}. Use a Register Now callout.")
+    if event.get("brief_prizes"):
+        parts.append(f"- Prizes: {event['brief_prizes']}")
+    if event.get("brief_tracks"):
+        parts.append(f"- Tracks: {', '.join(event['brief_tracks'])}")
     return "\n".join(parts)
 
 
-def _extract_http_error(resp) -> str:
+def _provider_failure(provider: str, status: int | None, code: str = "") -> str:
+    if code in {"credit_balance_exhausted", "insufficient_quota", "billing_hard_limit_reached"}:
+        return f"{provider} image credits are exhausted. Add API credits or use a funded key."
+    if status == 429:
+        return f"{provider} reached its image quota or rate limit. Check the project quota before retrying."
+    if status in (401, 403):
+        return f"{provider} denied access. Check the API key and image model permissions."
+    if status == 404:
+        return f"{provider} image model is unavailable for this project."
+    return f"{provider} could not return an image. Try again later."
+
+
+def _build_free_poster_prompt(
+    event: dict,
+    sponsors: list[str],
+    prompt: str,
+    reference_bytes: bytes | None = None,
+) -> str:
+    palette_hint = ""
+    if reference_bytes:
+        pal = extract_palette_from_image(reference_bytes)
+        if pal:
+            palette_hint = (
+                f" Strictly match this color palette: background {pal['bg_color']}, "
+                f"primary {pal['primary_color']}, accent {pal['accent_color']}."
+            )
+
+    style_desc = (prompt or "").strip() or (
+        f"Bold modern editorial graphic design for a campus {event.get('type', 'tech event')}"
+    )
+    tracks = event.get("brief_tracks") or _default_tracks(event)
+    mood_context = (event.get("description") or event.get("goals") or "").strip()[:140]
+    parts = [
+        f"Editorial graphic design event poster. Visual style and concept: {style_desc}.",
+        f"Display only the bold event title \"{event['name']}\" cleanly in the upper section, with small event type label \"{event.get('type', 'Event')}\".",
+        f"Subject atmosphere inspired by: {mood_context or event.get('type', 'innovation')}, themes {', '.join(tracks[:3])}.{palette_hint}",
+        "Leave a clean, uncluttered dark gradient band along the bottom 18% of the frame for an overlaid info card. Do NOT render dates, venue addresses, URLs, QR codes, gibberish small words, or watermarks.",
+    ]
+    return " ".join(parts)[:1100]
+
+
+def _load_pil_font(size: int, bold: bool = False):
+    from PIL import ImageFont
+
+    candidates = (
+        [
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+            "/Library/Fonts/Arial Unicode.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+            "/System/Library/Fonts/Helvetica.ttc",
+        ]
+        if bold
+        else [
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+            "/Library/Fonts/Arial Unicode.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "/System/Library/Fonts/Helvetica.ttc",
+        ]
+    )
+    for path in candidates:
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+    return ImageFont.load_default()
+
+
+def _draw_qr_on_image(canvas, url: str, box_x: int, box_y: int, box_size: int) -> None:
+    from PIL import ImageDraw
+    from reportlab.graphics.barcode.qr import QrCodeWidget
+
+    widget = QrCodeWidget(url)
+    widget.draw()
+    modules = getattr(getattr(widget, "qr", None), "modules", None)
+    if not modules:
+        return
+    draw = ImageDraw.Draw(canvas, "RGBA")
+    draw.rounded_rectangle(
+        [box_x, box_y, box_x + box_size, box_y + box_size],
+        radius=12,
+        fill=(255, 255, 255, 255),
+    )
+    count = len(modules)
+    pad = 10
+    inner = box_size - 2 * pad
+    cell = inner / count
+    for r_idx, row in enumerate(modules):
+        for c_idx, dark in enumerate(row):
+            if dark:
+                x0 = box_x + pad + c_idx * cell
+                y0 = box_y + pad + r_idx * cell
+                draw.rectangle([x0, y0, x0 + cell + 0.4, y0 + cell + 0.4], fill=(15, 23, 42, 255))
+
+
+def _composite_verified_event_footer(
+    raw_bytes: bytes,
+    event: dict,
+    sponsors: list[str],
+    deadline: str,
+    reg_url: str | None,
+) -> bytes:
+    """Resize generated AI artwork to 1080x1350 and overlay a crisp verified event + QR footer strip."""
+    from PIL import Image, ImageDraw, ImageOps
+
+    W, H = 1080, 1350
+    with Image.open(io.BytesIO(raw_bytes)) as src:
+        img = ImageOps.fit(src.convert("RGBA"), (W, H), method=Image.Resampling.LANCZOS)
+
+    pal = extract_palette_from_image(raw_bytes) or {}
+    acc_hex = (pal.get("accent_color") or "#D3FA57").lstrip("#")
     try:
-        data = resp.json()
-        return data.get("error", {}).get("message") or resp.text[:200]
+        acc_rgb = (int(acc_hex[0:2], 16), int(acc_hex[2:4], 16), int(acc_hex[4:6], 16))
+        if _luminance(acc_rgb) < 110:
+            acc_rgb = (211, 250, 87)
     except Exception:
-        return resp.text[:200]
+        acc_rgb = (211, 250, 87)
+
+    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    odraw = ImageDraw.Draw(overlay, "RGBA")
+    for y in range(1030, H):
+        alpha = int(195 * ((y - 1030) / (H - 1030)) ** 1.2)
+        odraw.line([(0, y), (W, y)], fill=(7, 11, 20, alpha))
+
+    card_x0, card_y0, card_x1, card_y1 = 44, 1108, W - 44, H - 36
+    odraw.rounded_rectangle(
+        [card_x0, card_y0, card_x1, card_y1],
+        radius=22,
+        fill=(10, 15, 29, 250),
+        outline=(*acc_rgb, 195),
+        width=2,
+    )
+    img = Image.alpha_composite(img, overlay)
+
+    draw = ImageDraw.Draw(img, "RGBA")
+    f_kicker = _load_pil_font(19, bold=True)
+    f_main = _load_pil_font(28, bold=True)
+    f_meta = _load_pil_font(21, bold=False)
+    f_small = _load_pil_font(17, bold=True)
+
+    date_label = (
+        f"{event['start_date']} to {event['end_date']}"
+        if event.get("end_date") and event["end_date"] != event["start_date"]
+        else event["start_date"]
+    )
+    club_line = f"{event.get('club', 'ClubOS')}  ·  {event.get('college', '')}".strip(" ·").upper()
+    venue_line = f"{date_label}   ·   {event.get('venue', 'Campus')}"
+    tracks = event.get("brief_tracks") or _default_tracks(event)
+    detail_parts = [f"Reg closes {deadline}"]
+    if event.get("brief_prizes"):
+        prizes_clean = str(event["brief_prizes"]).replace("₹", "INR ")
+        detail_parts.append(f"Prizes: {prizes_clean[:36]}")
+    elif tracks:
+        detail_parts.append(" · ".join(tracks[:2]))
+    if sponsors:
+        detail_parts.append(f"Sponsors: {', '.join(sponsors[:2])}")
+    detail_line = "   |   ".join(detail_parts).replace("₹", "INR ")
+
+    text_x = card_x0 + 28
+    draw.text((text_x, card_y0 + 22), club_line[:64], font=f_kicker, fill=(*acc_rgb, 255))
+    draw.text((text_x, card_y0 + 54), venue_line[:52], font=f_main, fill=(248, 250, 252, 255))
+    draw.text((text_x, card_y0 + 98), detail_line[:74], font=f_meta, fill=(203, 213, 225, 255))
+
+    if reg_url:
+        qr_size = 132
+        qr_x = card_x1 - qr_size - 22
+        qr_y = card_y0 + 20
+        _draw_qr_on_image(img, reg_url, qr_x, qr_y, qr_size)
+        draw.text((qr_x + 4, qr_y + qr_size + 6), "SCAN TO REGISTER", font=_load_pil_font(12, bold=True), fill=(*acc_rgb, 255))
+        draw.text((text_x, card_y0 + 138), reg_url[:58], font=f_small, fill=(*acc_rgb, 230))
+    else:
+        badge_text = f"{event.get('target', 100)}+ PARTICIPANTS  ·  {event.get('type', 'EVENT').upper()}"
+        draw.text((text_x, card_y0 + 138), badge_text[:56], font=f_small, fill=(*acc_rgb, 235))
+
+    out = io.BytesIO()
+    img.convert("RGB").save(out, format="PNG")
+    return out.getvalue()
+
+
+def _generate_cloudflare_image(art_prompt: str) -> tuple[bytes | None, str]:
+    account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
+    token = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
+    if not account_id or not token:
+        return None, ""
+    headers = {"Authorization": f"Bearer {token}"}
+    for model in (
+        "@cf/black-forest-labs/flux-1-schnell",
+        "@cf/stabilityai/stable-diffusion-xl-base-1.0",
+    ):
+        url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}"
+        payload = {"prompt": art_prompt, "steps": 4} if "flux" in model else {"prompt": art_prompt}
+        try:
+            resp = httpx.post(url, headers=headers, json=payload, timeout=45.0)
+            if not resp.is_success:
+                continue
+            ctype = resp.headers.get("content-type", "")
+            if ctype.startswith("image/") and len(resp.content) > 2000:
+                return resp.content, f"Cloudflare {model.split('/')[-1]}"
+            data = resp.json()
+            b64 = (data.get("result") or {}).get("image")
+            if b64:
+                return base64.b64decode(b64), f"Cloudflare {model.split('/')[-1]}"
+        except Exception:
+            logger.debug("Cloudflare Workers AI model %s failed", model, exc_info=True)
+    return None, ""
+
+
+def _generate_hf_flux_image(art_prompt: str) -> tuple[bytes | None, str]:
+    import random
+
+    seed = random.randint(1, 999999)
+    base = "https://black-forest-labs-flux-1-schnell.hf.space"
+    try:
+        r = httpx.post(
+            f"{base}/gradio_api/call/infer",
+            json={"data": [art_prompt, seed, True, 768, 960, 4]},
+            timeout=15.0,
+        )
+        if not r.is_success:
+            return None, ""
+        eid = r.json().get("event_id")
+        if not eid:
+            return None, ""
+        sse = httpx.get(f"{base}/gradio_api/call/infer/{eid}", timeout=50.0)
+        if not sse.is_success:
+            return None, ""
+        img_url = None
+        for line in sse.text.splitlines():
+            if line.startswith("data: "):
+                try:
+                    parsed = json.loads(line[6:])
+                    if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
+                        img_url = parsed[0].get("url")
+                except ValueError:
+                    continue
+        if not img_url:
+            return None, ""
+        img_resp = httpx.get(img_url, timeout=20.0, follow_redirects=True)
+        if img_resp.is_success and len(img_resp.content) > 2000:
+            return img_resp.content, "FLUX.1-schnell (Free AI)"
+    except Exception:
+        logger.debug("HF FLUX.1-schnell generation failed", exc_info=True)
+    return None, ""
+
+
+def _generate_ai_horde_image(art_prompt: str) -> tuple[bytes | None, str]:
+    import time
+
+    api_key = os.getenv("AI_HORDE_API_KEY", "").strip() or "0000000000"
+    headers = {"apikey": api_key, "Client-Agent": "ClubOS:1.0:poster-studio"}
+    try:
+        submit = httpx.post(
+            "https://aihorde.net/api/v2/generate/async",
+            headers=headers,
+            json={
+                "prompt": art_prompt,
+                "params": {"width": 512, "height": 640, "steps": 20, "n": 1},
+                "models": ["Deliberate", "stable_diffusion", "ICBINP - I Can't Believe It's Not Photography"],
+                "r2": True,
+            },
+            timeout=10.0,
+        )
+        if not submit.is_success:
+            return None, ""
+        job_id = submit.json().get("id")
+        if not job_id:
+            return None, ""
+        for _ in range(12):
+            time.sleep(2.0)
+            check = httpx.get(f"https://aihorde.net/api/v2/generate/check/{job_id}", timeout=6.0)
+            if check.is_success and check.json().get("done"):
+                status = httpx.get(f"https://aihorde.net/api/v2/generate/status/{job_id}", timeout=10.0)
+                gens = status.json().get("generations") or []
+                if gens and gens[0].get("img"):
+                    img_url = gens[0]["img"]
+                    if img_url.startswith("http"):
+                        dl = httpx.get(img_url, timeout=15.0, follow_redirects=True)
+                        if dl.is_success and len(dl.content) > 2000:
+                            return dl.content, "AI Horde (Free AI)"
+                break
+    except Exception:
+        logger.debug("AI Horde generation failed", exc_info=True)
+    return None, ""
+
+
+def _generate_free_ai_raster_poster(
+    event: dict,
+    sponsors: list[str],
+    deadline: str,
+    reg_url: str | None,
+    prompt: str,
+    reference_bytes: bytes | None = None,
+) -> tuple[bytes | None, str]:
+    """Generate a bespoke AI poster via Cloudflare Workers AI, HF FLUX.1-schnell, Pollinations, or AI Horde."""
+    art_prompt = _build_free_poster_prompt(event, sponsors, prompt, reference_bytes=reference_bytes)
+
+    raw_bytes, provider = _generate_cloudflare_image(art_prompt)
+    if not raw_bytes:
+        raw_bytes, provider = _generate_hf_flux_image(art_prompt)
+    if not raw_bytes:
+        # Try Pollinations with optional key or Classic endpoint
+        from urllib.parse import quote
+        import random
+
+        poll_key = os.getenv("POLLINATIONS_API_KEY", "").strip()
+        seed = random.randint(1, 999999)
+        if poll_key:
+            url = f"https://gen.pollinations.ai/image/{quote(art_prompt[:450])}?width=768&height=960&model=flux&seed={seed}"
+            hdrs = {"Authorization": f"Bearer {poll_key}"}
+        else:
+            url = f"https://image.pollinations.ai/prompt/{quote(art_prompt[:450])}?width=768&height=960&nologo=true&seed={seed}"
+            hdrs = {}
+        try:
+            r = httpx.get(url, headers=hdrs, timeout=20.0, follow_redirects=True)
+            if r.status_code == 200 and r.headers.get("content-type", "").startswith("image/") and len(r.content) > 5000:
+                raw_bytes, provider = r.content, "Pollinations AI"
+        except Exception:
+            pass
+    if not raw_bytes:
+        raw_bytes, provider = _generate_ai_horde_image(art_prompt)
+    if not raw_bytes:
+        return None, ""
+
+    try:
+        composed = _composite_verified_event_footer(raw_bytes, event, sponsors, deadline, reg_url)
+        return composed, provider
+    except Exception:
+        logger.debug("Poster footer composite failed, returning raw image", exc_info=True)
+        return raw_bytes, provider
 
 
 def _fetch_pollinations_background(event: dict, design: PosterDesign, prompt: str) -> tuple[str | None, str]:
@@ -729,8 +1062,9 @@ def _generate_ai_raster_poster(
     reference_mime: str | None = None,
     base_bytes: bytes | None = None,
     base_mime: str | None = None,
+    allow_free: bool = True,
 ) -> tuple[bytes | None, str, str]:
-    """Try OpenAI Image API (gpt-image-1 / dall-e-3) or Google Nano Banana for real AI PNG posters."""
+    """Generate poster artwork with OpenAI, Gemini, Cloudflare Workers AI, or free HF FLUX.1-schnell."""
     full_prompt = _raster_image_prompt(
         event, sponsors, deadline, reg_url, prompt,
         has_ref=bool(reference_bytes),
@@ -738,87 +1072,69 @@ def _generate_ai_raster_poster(
     )
     errors: list[str] = []
 
-    # 1. Try OpenAI Image API first if configured (supports gpt-image-1 edit/generations)
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
     if openai_key:
+        model = "gpt-image-2.5-flare"
         headers = {"Authorization": f"Bearer {openai_key}"}
-        edit_img = reference_bytes if (reference_bytes and reference_mime in ("image/png", "image/jpeg", "image/webp")) else (
-            base_bytes if (base_bytes and base_mime in ("image/png", "image/jpeg", "image/webp") and prompt) else None
-        )
-        edit_mime = reference_mime if edit_img is reference_bytes else base_mime
-        if edit_img and edit_mime:
+        params = {"model": model, "prompt": full_prompt, "size": "1024x1536", "quality": "medium"}
+        images = []
+        for name, data, mime in (("current", base_bytes, base_mime), ("reference", reference_bytes, reference_mime)):
+            if data and mime in ("image/png", "image/jpeg", "image/webp"):
+                images.append(("image[]", (f"{name}.{mime.split('/')[1]}", data, mime)))
+        try:
+            if images:
+                resp = httpx.post("https://api.openai.com/v1/images/edits", headers=headers,
+                                  data=params, files=images, timeout=150.0)
+            else:
+                resp = httpx.post("https://api.openai.com/v1/images/generations", headers=headers,
+                                  json=params, timeout=150.0)
+            if resp.is_success:
+                return base64.b64decode(resp.json()["data"][0]["b64_json"], validate=True), f"OpenAI {model}", ""
             try:
-                ext = "png" if "png" in edit_mime else "webp" if "webp" in edit_mime else "jpg"
-                resp = httpx.post(
-                    "https://api.openai.com/v1/images/edits",
-                    headers=headers,
-                    data={"model": "gpt-image-1", "prompt": full_prompt[:4000], "size": "1024x1536"},
-                    files={"image": (f"poster.{ext}", edit_img, edit_mime)},
-                    timeout=60.0,
-                )
-                if resp.status_code == 200:
-                    b64 = resp.json()["data"][0]["b64_json"]
-                    return base64.b64decode(b64), "OpenAI gpt-image-1 (Edit/Ref)", ""
-                errors.append(f"OpenAI gpt-image-1: {_extract_http_error(resp)}")
-            except Exception as exc:
-                errors.append(f"OpenAI gpt-image-1: {exc}")
+                code = resp.json().get("error", {}).get("code")
+            except ValueError:
+                code = None
+            errors.append(_provider_failure("OpenAI", resp.status_code, code))
+        except Exception:
+            errors.append(_provider_failure("OpenAI", None))
 
-        if not any("credits remaining" in e or "insufficient_quota" in e for e in errors):
-            for model, size, extra in (
-                ("gpt-image-1", "1024x1536", {"quality": "medium"}),
-                ("dall-e-3", "1024x1792", {"response_format": "b64_json"}),
-            ):
-                try:
-                    resp = httpx.post(
-                        "https://api.openai.com/v1/images/generations",
-                        headers=headers,
-                        json={"model": model, "prompt": full_prompt[:3900], "size": size, **extra},
-                        timeout=60.0,
-                    )
-                    if resp.status_code == 200:
-                        item = resp.json()["data"][0]
-                        if item.get("b64_json"):
-                            return base64.b64decode(item["b64_json"]), f"OpenAI {model}", ""
-                        if item.get("url"):
-                            img_r = httpx.get(item["url"], timeout=20.0)
-                            if img_r.status_code == 200:
-                                return img_r.content, f"OpenAI {model}", ""
-                    msg = _extract_http_error(resp)
-                    errors.append(f"OpenAI {model}: {msg}")
-                    if "credits remaining" in msg:
-                        break
-                except Exception as exc:
-                    errors.append(f"OpenAI {model}: {exc}")
-
-    # 2. Try Google Nano Banana (gemini-2.5-flash-image / gemini-3.1-flash-image / gemini-nano-banana-2.1)
     if os.getenv("GEMINI_API_KEY"):
         try:
             from google.genai import types
             client = intelligence._client()
             contents: list = []
-            if reference_bytes and reference_mime in ("image/png", "image/jpeg", "image/webp"):
-                contents.append(types.Part.from_bytes(data=reference_bytes, mime_type=reference_mime))
             if base_bytes and base_mime in ("image/png", "image/jpeg", "image/webp") and prompt:
                 contents.append(types.Part.from_bytes(data=base_bytes, mime_type=base_mime))
+            if reference_bytes and reference_mime in ("image/png", "image/jpeg", "image/webp"):
+                contents.append(types.Part.from_bytes(data=reference_bytes, mime_type=reference_mime))
             contents.append(full_prompt)
 
-            for model in ("gemini-2.5-flash-image", "gemini-3.1-flash-image", "gemini-nano-banana-2.1"):
+            for model in ("gemini-3.1-flash-image", "gemini-3.1-flash-lite-image"):
                 try:
                     resp = client.models.generate_content(
                         model=model,
                         contents=contents,
-                        config=types.GenerateContentConfig(response_modalities=["IMAGE"]),
+                        config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"], http_options=types.HttpOptions(timeout=120000)),
                     )
                     for part in resp.candidates[0].content.parts:
                         if part.inline_data and part.inline_data.data:
                             return bytes(part.inline_data.data), f"Nano Banana ({model})", ""
                 except Exception as exc:
-                    errors.append(f"{model}: {type(exc).__name__}")
-                    continue
-        except Exception as exc:
-            errors.append(f"NanoBanana: {exc}")
+                    status = getattr(exc, "code", None)
+                    errors.append(_provider_failure("Gemini", status))
+                    if status in (401, 403):
+                        break
+        except Exception:
+            errors.append(_provider_failure("Gemini", None))
 
-    return None, "", " | ".join(errors)
+    if allow_free:
+        free_png, free_mode = _generate_free_ai_raster_poster(
+            event, sponsors, deadline, reg_url, prompt, reference_bytes=reference_bytes
+        )
+        if free_png:
+            return free_png, free_mode, " ".join(dict.fromkeys(errors))
+
+    return None, "", " ".join(dict.fromkeys(errors))
 
 
 def create_poster_record(
@@ -829,9 +1145,14 @@ def create_poster_record(
     base_poster_id: str | None = None,
     activate: bool = True,
     use_ai_image: bool = True,
+    require_ai: bool = False,
 ) -> dict:
     """Generate a poster for *event_id*, persist it, and optionally set it active."""
     event = get_event(c, event_id)
+    saved_brief=c.execute("SELECT details FROM event_briefs WHERE event_id=?",(event_id,)).fetchone()
+    if saved_brief:
+        facts=json.loads(saved_brief['details'])
+        event.update(brief_prizes=facts.get('prizes'),brief_tracks=facts.get('tracks'))
     sponsors = [
         r["name"]
         for r in c.execute(
@@ -842,7 +1163,8 @@ def create_poster_record(
     ]
     form = form_for_event(c, event_id)
     deadline = (form or {}).get("deadline") or event.get("milestone_date") or event["start_date"]
-    reg_url = (form or {}).get("public_url") or (f"http://localhost:8017/register/{form['slug']}" if form and form.get("slug") else None)
+    port = os.getenv("PORT", "8018")
+    reg_url = (form or {}).get("public_url") or (f"http://127.0.0.1:{port}/register/{form['slug']}" if form and form.get("slug") else None)
 
     base_design = None
     base_bytes, base_mime = None, None
@@ -868,7 +1190,7 @@ def create_poster_record(
         ).fetchone()
         if ref and ref["image_data"]:
             ref_bytes, ref_mime = bytes(ref["image_data"]), ref["mime_type"]
-    else:
+    elif not require_ai:
         ref = c.execute(
             "SELECT image_data, mime_type FROM posters WHERE event_id=? AND kind='reference' ORDER BY rowid DESC LIMIT 1",
             (event_id,),
@@ -876,18 +1198,41 @@ def create_poster_record(
         if ref and ref["image_data"]:
             ref_bytes, ref_mime = bytes(ref["image_data"]), ref["mime_type"]
 
-    # Try real AI raster generation (Nano Banana / OpenAI gpt-image-1) when requested
+    if require_ai:
+        if reference_poster_id and (not ref_bytes or ref_mime not in ("image/png","image/jpeg","image/webp")):
+            raise HTTPException(422, "Choose a PNG, JPG, or WebP reference from this event.")
+        if base_poster_id and not base_bytes:
+            raise HTTPException(422, "Choose a raster poster to revise.")
     ai_png = None
     ai_mode = ""
     ai_err = ""
-    if use_ai_image and (prompt or reference_bytes or os.getenv("OPENAI_API_KEY")):
+    has_provider_key = bool(
+        os.getenv("OPENAI_API_KEY")
+        or os.getenv("GEMINI_API_KEY")
+        or (os.getenv("CLOUDFLARE_ACCOUNT_ID") and os.getenv("CLOUDFLARE_API_TOKEN"))
+    )
+    if use_ai_image and (require_ai or has_provider_key):
         ai_png, ai_mode, ai_err = _generate_ai_raster_poster(
             event, sponsors, deadline, reg_url, prompt,
             reference_bytes=ref_bytes, reference_mime=ref_mime,
             base_bytes=base_bytes, base_mime=base_mime,
         )
 
+    if require_ai and not ai_png:
+        raise HTTPException(502, ai_err or "The image provider returned no artwork. Try a different prompt.")
+
     if ai_png:
+        from PIL import Image
+        from io import BytesIO
+        try:
+            with Image.open(BytesIO(ai_png)) as image:
+                image.load()
+                if image.format!="PNG":
+                    output=BytesIO()
+                    image.convert("RGBA").save(output,format="PNG")
+                    ai_png=output.getvalue()
+        except (OSError,ValueError) as exc:
+            raise HTTPException(502,"The image provider returned an unreadable poster.") from exc
         if activate:
             c.execute("UPDATE posters SET is_active=0 WHERE event_id=?", (event_id,))
         theme_label = prompt[:42].strip() if prompt else ("Reference Match" if ref_bytes else "AI Studio")
@@ -1015,6 +1360,7 @@ class PosterGenerateRequest(BaseModel):
     prompt: str = Field(default="", max_length=1200)
     reference_poster_id: str | None = None
     base_poster_id: str | None = None
+    require_ai: bool = False
 
 
 @router.get("/events/{event_id}/posters")
@@ -1049,6 +1395,7 @@ def generate_poster_route(event_id: str, data: PosterGenerateRequest, club: auth
             prompt=data.prompt.strip(),
             reference_poster_id=data.reference_poster_id,
             base_poster_id=data.base_poster_id,
+            require_ai=data.require_ai,
             activate=True,
         )
         posters = list_posters(c, event_id)
@@ -1062,6 +1409,7 @@ def upload_poster_route(
     mode: str = Form("reference"),
     prompt: str = Form(""),
     file: UploadFile = File(...),
+    generate: bool = Form(True),
 ):
     if mode not in ("reference", "final"):
         raise HTTPException(422, "Upload mode must be 'reference' or 'final'.")
@@ -1126,7 +1474,7 @@ def upload_poster_route(
         )
 
         generated = None
-        if mode == "reference":
+        if mode == "reference" and generate:
             generated = create_poster_record(
                 c,
                 event_id=event_id,
@@ -1138,7 +1486,7 @@ def upload_poster_route(
         posters = list_posters(c, event_id)
 
     return {
-        "message": "Final poster uploaded and set active." if mode == "final" else "Reference poster uploaded — Canvas generated a themed poster matching its palette.",
+        "message": "Final poster uploaded and set active." if mode == "final" else "Reference poster attached." if not generated else "Reference attached and a template preview created.",
         "uploaded_id": pid,
         "generated": generated,
         "posters": posters,

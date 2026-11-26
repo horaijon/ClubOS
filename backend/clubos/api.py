@@ -3,7 +3,7 @@ from datetime import date,timedelta
 from typing import Any,Annotated
 from fastapi import APIRouter,HTTPException,Request
 from pydantic import BaseModel,Field,ConfigDict,StringConstraints,model_validator
-from . import db,engine,trace
+from . import db,engine,trace,launch
 from .auth import Workspace, authorize_event
 from .state import Invalid,Missing,Conflict
 
@@ -28,13 +28,31 @@ class EventCreate(BaseModel):
     constraints:str=Field(default='',max_length=2500)
     brief:str=Field(default='',max_length=6500)
     estimated_budget:Money|None=None
+    brief_plan:launch.BriefPlan|None=None
     members:list[Name]=Field(default_factory=list,max_length=100)
 
     @model_validator(mode='after')
     def date_order(self):
         self.end_date=self.end_date or self.start_date
         if self.end_date<self.start_date:raise ValueError('End date precedes start date.')
+        if self.brief_plan:
+            if not self.brief:
+                raise ValueError('Include the reviewed event brief.')
+            if (self.brief_plan.registration_deadline>self.start_date or
+                    not self.start_date<=self.brief_plan.submission_deadline<=self.end_date):
+                raise ValueError('Registration must close by the event start, and submissions must close during the event.')
+            if self.brief_plan.estimated_budget<self.initial_budget:
+                raise ValueError('Total budget must cover the club funds allocated to the event.')
         return self
+
+class BriefInput(BaseModel):
+    model_config=ConfigDict(str_strip_whitespace=True)
+    brief:str=Field(min_length=1,max_length=6500)
+
+@router.post('/event-brief/preview')
+def preview_brief(input:BriefInput,club:Workspace):
+    details,mode,_=launch.extract(input.brief)
+    return dict(details=details,mode=mode)
 
 class Action(BaseModel):
     model_config=ConfigDict(extra='forbid')
@@ -75,6 +93,16 @@ def action(event_id:str,input:Action,club:Workspace):
         with execution.recording(), db.transaction(True) as c:
             authorize_event(c,event_id,club['id'])
             return engine.dispatch(c,event_id,input.type,input.payload,input.request_id,execution)
+    except Invalid as exc:raise error(exc) from exc
+
+
+@router.get('/events/{event_id}/explain/{target_type}/{target_id}')
+def explain_decision(event_id:str,target_type:str,target_id:str,club:Workspace):
+    from . import explainability
+    try:
+        with db.transaction() as c:
+            authorize_event(c,event_id,club['id'])
+            return explainability.explain(c,event_id,target_type,target_id)
     except Invalid as exc:raise error(exc) from exc
 
 

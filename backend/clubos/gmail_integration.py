@@ -192,6 +192,34 @@ def send_sponsor_email(
     }
 
 
+def send_notification_email(
+    club_id: str,
+    to_email: str,
+    subject: str,
+    body: str,
+) -> dict:
+    """Send a standalone Gmail notification (e.g. participant/stakeholder disruption alert)."""
+    to_email = (to_email or "").strip()
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", to_email):
+        raise ValueError("Provide a valid recipient email address.")
+
+    service = _get_gmail_service(club_id)
+    from_email = _get_connected_email(club_id)
+
+    mime_payload = _build_mime(to_email, subject, body, from_email)
+    result = (
+        service.users()
+        .messages()
+        .send(userId="me", body=mime_payload)
+        .execute()
+    )
+    return {
+        "message_id": result.get("id", ""),
+        "thread_id": result.get("threadId", ""),
+        "sent_at": now(),
+    }
+
+
 def _classify_reply(
     reply_text: str,
     sponsor_name: str,

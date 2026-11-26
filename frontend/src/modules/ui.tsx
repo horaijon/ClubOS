@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { CheckCircle2, Inbox, LoaderCircle, Search, X } from 'lucide-react'
+import { CheckCircle2, Inbox, LoaderCircle, Search, X, Check, Copy } from 'lucide-react'
 
 import type { GoogleStatus } from '../data'
 import type { TraceStep } from '../LiveTrace'
@@ -94,7 +94,7 @@ export function formValues(event: FormEvent<HTMLFormElement>):Row {
   event.preventDefault()
   return Object.fromEntries(new FormData(event.currentTarget))
 }
-export function CopyButton({value}:{value:string}){
+export function CopyButton({value,icon,label='Copy text'}:{value:string;icon?:boolean;label?:string}){
   const [message,setMessage]=useState('')
-  return <><Button onClick={async()=>{try {await navigator.clipboard.writeText(value);setMessage('Copied')} catch {setMessage('Select the draft text to copy it manually.')}}}>Copy text</Button>{message && <small role="status">{message}</small>}</>
+  return <><Button onClick={async()=>{try {await navigator.clipboard.writeText(value);setMessage('Copied')} catch {setMessage(icon?'Could not copy. Use Open Form and copy the address.':'Select the draft text to copy it manually.')}}} {...(icon?{'aria-label':label,title:label}:{})}>{icon?(message==='Copied'?<Check size={15}/>:<Copy size={15}/>):'Copy text'}</Button>{message && <small role="status">{message}</small>}</>
 }

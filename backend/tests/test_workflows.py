@@ -35,6 +35,19 @@ class Event:
         return response.json()
 
 
+def test_delete_expense_removes_it_and_restores_totals(workspace):
+    event = Event(workspace)
+    before = event.snapshot()
+    category = before['budget'][0]['id']
+    event.action('add_expense', {'category_id': category, 'amount': 50_000, 'description': 'Temporary snack order'})
+    added = next(x for x in event.snapshot()['expenses'] if x['description'] == 'Temporary snack order')
+    event.action('delete_expense', {'expense_id': added['id']})
+    after = event.snapshot()
+    assert all(x['id'] != added['id'] for x in after['expenses'])
+    assert after['metrics']['actual'] == before['metrics']['actual']
+    event.action('delete_expense', {'expense_id': added['id']}, expected=404)
+
+
 def test_withdrawal_approval_and_idempotency(workspace):
     event = Event(workspace)
     original = event.snapshot()
@@ -202,7 +215,25 @@ def test_confirmation_opens_receivable_and_saves_linked_work(workspace):
     }
 
 
-def test_overrun_and_copilot_proposals_are_editable_and_persisted(workspace):
+def test_overrun_and_copilot_proposals_are_editable_and_persisted(workspace, monkeypatch):
+    from clubos import copilot
+
+    def interpret(payload):
+        decisions = {
+            'Cut ₹8k without touching prizes': copilot.Decision(
+                intent='action', action='budget_optimize',
+                arguments=copilot.Arguments(amount=800000, protected_categories=['Prizes']),
+            ),
+            'Follow up with all contacted sponsors who haven’t replied': copilot.Decision(
+                intent='action', action='sponsor_followup',
+            ),
+        }
+        if payload['question'] in decisions:
+            return decisions[payload['question']], 'Test model'
+        venue = next(item['title'] for item in payload['active_risks'] if 'Venue' in item['title'])
+        return copilot.Decision(intent='reply', text=venue), 'Test model'
+
+    monkeypatch.setattr(copilot, 'interpret', interpret)
     event = Event(workspace)
     initial = event.snapshot()
     assert initial["metrics"]["pending_approvals"] == 2
@@ -295,3 +326,276 @@ def test_prompt_launch_registration_and_simulated_sponsor_lifecycle(workspace):
     recovery = event.action('simulate_dropout')
     assert recovery['approval_id']
     assert event.snapshot()['metrics']['committed'] == 0
+
+
+def test_brief_preview_handles_short_team_and_format_notes(workspace, monkeypatch):
+    from clubos import intelligence
+
+    monkeypatch.setattr(intelligence, 'local_chat', lambda *a, **kw: None)
+    monkeypatch.setattr(intelligence, 'structured', lambda agent, payload, schema, fallback: (fallback, 'Deterministic fallback', ''))
+    response = workspace.post('/api/event-brief/preview', json={'brief': 'team size - 2-4\n24 hour offline hackathon'})
+    assert response.status_code == 200
+    facts = response.json()['details']
+    assert '2-4' in facts['team_rules']
+    assert facts['notes'] == '24 hour offline hackathon'
+    assert facts['registration_deadline'] is None
+    assert facts['submission_deadline'] is None
+    assert {'team_name', 'team_size'} <= set(facts['fields'])
+
+
+@pytest.mark.parametrize('brief,expected', [
+    ('24 hour offline hackathon, team size : 2-4, 5000 for 1st, 3000 for 2nd, 2000 for 3rd. need sponsors',
+     '5000 for 1st, 3000 for 2nd, 2000 for 3rd'),
+    ('Winner: ₹10,000, runner up: ₹5,000.', 'Winner: ₹10,000, runner up: ₹5,000'),
+    ('1st prize 5k and 2nd prize 3k', '1st prize 5k, 2nd prize 3k'),
+    ('Prize pool of ₹50,000.', '₹50,000'),
+    ('Winners receive hardware kits. Prizes include swag.', 'swag'),
+    ('Free entry for the first 100 students on 3rd March 2027. Club funds are ₹15,000.', ''),
+])
+def test_brief_preview_reads_prizes(workspace, monkeypatch, brief, expected):
+    from clubos import intelligence
+
+    monkeypatch.setattr(intelligence, 'local_chat', lambda *a, **kw: None)
+    monkeypatch.setattr(intelligence, 'structured', lambda agent, payload, schema, fallback: (fallback, 'Deterministic fallback', ''))
+    response = workspace.post('/api/event-brief/preview', json={'brief': brief})
+    assert response.status_code == 200
+    assert response.json()['details']['prizes'] == expected
+
+
+def test_preview_then_launch_persists_reviewed_brief(workspace):
+    from datetime import date, timedelta
+    day = (date.today()+timedelta(days=14)).isoformat()
+    closes = (date.today()+timedelta(days=10)).isoformat()
+    prompt = f'A hackathon called Orbit at the Innovation Lab on {day} for 80 students. Registration closes {closes}. Tracks are climate and robotics. Teams of 2 to 4. Club funds are ₹15,000. Total budget is ₹50,000.'
+    preview = workspace.post('/api/event-brief/preview',json={'brief':prompt})
+    assert preview.status_code == 200
+    facts=preview.json()['details']
+    assert (facts['name'],facts['venue'],facts['target'],facts['initial_budget']) == ('Orbit','the Innovation Lab',80,1_500_000)
+    plan={key:facts[key] for key in ('registration_deadline','estimated_budget','fields','team_rules','tracks','prizes','sponsor_needs','notes')}
+    plan['submission_deadline']=day
+    result=workspace.post('/api/events',json={'name':'Orbit revised','venue':facts['venue'],'start_date':day,
+                          'initial_budget':facts['initial_budget'],'target':facts['target'],'brief':prompt,'brief_plan':plan})
+    assert result.status_code == 201, result.text
+    event=Event(workspace,result.json()['id']).snapshot()
+    assert event['event']['name']=='Orbit revised'
+    assert event['event_brief']=={'prompt':prompt,'details':plan}
+    assert event['registration_form']['deadline']==closes
+    assert event['metrics']['planned']==5_000_000
+
+
+def test_copilot_clarifies_then_executes_model_selected_action(workspace, monkeypatch):
+    from clubos import copilot
+    event=Event(workspace)
+    def decide(agent, payload, schema, fallback):
+        assert agent=='Nexus'
+        if not payload['conversation']:
+            return schema(intent='clarify',text='What is the task title?'),'Test model',''
+        assert payload['conversation'][0]['answer']=='What is the task title?'
+        return schema(intent='action',action='add_task',arguments={'title':payload['question']}),'Test model',''
+    monkeypatch.setattr(copilot.intelligence,'structured',decide)
+    answer=event.action('copilot',{'question':'Create an event task'})
+    assert answer['clarification']
+    question='Confirm venue access'
+    event.action('copilot',{'question':question,'history':[{'question':'Create an event task','answer':answer['text']}]})
+    assert any(task['title']==question for task in event.snapshot()['tasks'])
+
+
+def test_copilot_reports_model_unavailability_instead_of_using_canned_answers(workspace, monkeypatch):
+    from clubos import copilot
+
+    monkeypatch.setattr(copilot, 'interpret', lambda payload: (copilot.Decision(intent='unavailable'), 'Unavailable'))
+    event = Event(workspace)
+    for question in ('hello', 'what is our budget', 'how many participants do we have so far?'):
+        result = event.action('copilot', {'question': question})
+        assert result['mode'] == 'AI unavailable'
+
+
+def test_copilot_reviewed_gmail_draft_uses_actual_saved_recipient(workspace, monkeypatch):
+    from clubos import copilot, db
+    event=Event(workspace)
+    sponsor=next(s for s in event.snapshot()['sponsors'] if s['stage']=='Shortlisted')
+    with db.transaction(write=True) as conn:
+        conn.execute('UPDATE profiles SET website=? WHERE id=?',('https://verified-company.com',sponsor['prospect_id']))
+        conn.execute('UPDATE sponsors SET contact_email=?,draft=? WHERE id=?',
+                     ('events@verified-company.com','Subject: Partnership\n\nWould you support the event?',sponsor['id']))
+    monkeypatch.setattr(copilot.gmail_integration,'is_google_connected',lambda club:True)
+    monkeypatch.setattr(copilot.intelligence,'structured',lambda a,p,s,f:(s(intent='outreach',sponsor_ids=[sponsor['id']]),'Test model',''))
+    delivered=[]
+    def send(**kwargs):
+        delivered.append(kwargs)
+        return {'message_id':'test-message','thread_id':'test-thread'}
+    monkeypatch.setattr(copilot.gmail_integration,'send_sponsor_email',send)
+    response=event.action('copilot',{'question':'Email the sponsor'})
+    assert not delivered
+    draft=response['drafts'][0]
+    event.action('copilot_send',{'draft_id':draft['id']})
+    event.action('copilot_send',{'draft_id':draft['id']})
+    assert len(delivered)==1
+    assert delivered[0]['to_email']=='events@verified-company.com'
+
+
+def test_disruption_recomputes_dependency_chain_without_touching_unrelated_tasks(workspace):
+    from datetime import date, timedelta
+    from clubos import db
+    from clubos.state import task
+
+    event=Event(workspace)
+    last=date.fromisoformat(event.snapshot()['event']['end_date'])
+    early=(last-timedelta(days=8)).isoformat()
+    later=(last-timedelta(days=5)).isoformat()
+    with db.transaction(write=True) as conn:
+        root=task(conn,event.id,'Replace projector','Operations',early)
+        child=task(conn,event.id,'Test projector','Operations',early)
+        slack=task(conn,event.id,'Run presentation','Operations',later)
+        unrelated=task(conn,event.id,'Confirm catering','Operations',early)
+        conn.executemany('INSERT INTO dependencies VALUES (?,?)',[(child,root),(slack,child)])
+    result=event.action('campus_disruption',{'kind':'asset','task_id':root,'days':2})
+    snapshot=event.snapshot()
+    changed={t['id']:t['due_date'] for t in snapshot['tasks']}
+    assert changed[root]==changed[child]==(last-timedelta(days=6)).isoformat()
+    assert changed[slack]==later and changed[unrelated]==early
+    alerts=next(item for item in snapshot['disruptions'] if item['id']==result['disruption_id'])['changes']
+    assert {item['record'] for item in alerts}=={'Replace projector','Test projector'}
+    assert all(item['before']==early and item['after']==changed[root] and item['audience'] for item in alerts)
+
+
+def test_venue_disruption_updates_public_form_and_preserves_event_records(workspace):
+    event=Event(workspace)
+    before=event.snapshot()
+    event.action('campus_disruption',{'kind':'venue','venue':'Backup auditorium'})
+    after=event.snapshot()
+    assert after['event']['venue']=='Backup auditorium'
+    assert after['tasks']==before['tasks'] and after['budget']==before['budget']
+    assert after['disruptions'][0]['changes'][0]['before']==before['event']['venue']
+    slug=after['registration_form']['slug']
+    assert workspace.get('/api/registration/'+slug).json()['venue']=='Backup auditorium'
+
+
+def test_venue_disruption_emails_real_participants_and_retries_queued(workspace, monkeypatch):
+    from clubos import gmail_integration
+
+    event = Event(workspace)
+    event.action('add_participant', {'name': 'Priya Nair', 'email': 'priya@campus.edu'})
+
+    sent = []
+    connected = {'value': False}
+    monkeypatch.setattr(gmail_integration, 'is_google_connected', lambda _cid: connected['value'])
+    monkeypatch.setattr(
+        gmail_integration,
+        'send_notification_email',
+        lambda club_id, to_email, subject, body: sent.append((to_email, subject, body)) or {'message_id': 'msg-1', 'thread_id': ''},
+    )
+
+    # Disconnected -> queued for real email, simulated for @example.test
+    res = event.action('campus_disruption', {'kind': 'venue', 'venue': 'ESB Seminar Hall', 'reason': 'Power maintenance'})
+    assert not sent
+    disruption = next(d for d in event.snapshot()['disruptions'] if d['id'] == res['disruption_id'])
+    priya_notif = next(n for n in disruption['notifications'] if n['recipient_email'] == 'priya@campus.edu')
+    assert priya_notif['status'] == 'queued'
+    assert 'ESB Seminar Hall' in priya_notif['subject']
+    assert any(n['status'] == 'simulated' for n in disruption['notifications'])
+
+    # Connect Gmail -> retry sends queued email
+    connected['value'] = True
+    retry = event.action('retry_disruption_emails', {'disruption_id': res['disruption_id']})
+    assert retry['sent'] == 1
+    assert len(sent) == 1
+    assert sent[0][0] == 'priya@campus.edu'
+    assert 'Power maintenance' in sent[0][2]
+
+    # Trigger another venue change while connected -> auto-sends immediately
+    res2 = event.action('campus_disruption', {'kind': 'venue', 'venue': 'APEX Auditorium'})
+    assert len(sent) == 2
+    assert 'APEX Auditorium' in sent[1][1]
+
+
+def test_cancellation_and_eligibility_disruptions_update_state_and_notify(workspace, monkeypatch):
+    from clubos import gmail_integration
+
+    event = Event(workspace)
+    event.action('add_participant', {'name': 'Rohan Verma', 'email': 'rohan@campus.edu'})
+    sent = []
+    monkeypatch.setattr(gmail_integration, 'is_google_connected', lambda _cid: True)
+    monkeypatch.setattr(
+        gmail_integration,
+        'send_notification_email',
+        lambda club_id, to_email, subject, body: sent.append((to_email, subject, body)) or {'message_id': 'msg-2', 'thread_id': ''},
+    )
+
+    snap = event.snapshot()
+    open_task = next(t for t in snap['tasks'] if t['status'] != 'Completed')
+    res = event.action('campus_disruption', {
+        'kind': 'cancellation',
+        'scope': 'session',
+        'task_id': open_task['id'],
+        'reason': 'Keynote speaker flight delayed',
+    })
+    after_cancel = event.snapshot()
+    updated_task = next(t for t in after_cancel['tasks'] if t['id'] == open_task['id'])
+    assert updated_task['status'] == 'Blocked'
+    assert len(sent) == 1
+    assert 'Schedule Change' in sent[0][1]
+
+    elig = event.action('campus_disruption', {
+        'kind': 'cutoff',
+        'eligibility_note': 'Open to 2nd and 3rd year CS/ECE students',
+        'target': 180,
+    })
+    after_elig = event.snapshot()
+    assert after_elig['event']['target'] == 180
+    assert 'CS/ECE' in after_elig['event']['requirements']
+    assert len(sent) == 2
+    slug = after_elig['registration_form']['slug']
+    fields = {u['field'] for u in workspace.get('/api/registration/' + slug).json()['disruption_updates']}
+    assert 'Eligibility cutoff' in fields
+
+
+def test_decision_explainability_and_appeal_audit_trail(workspace):
+    event = Event(workspace)
+    snap = event.snapshot()
+    approval = snap['approvals'][0]
+    risk = snap['risks'][0]
+    sponsor = snap['sponsors'][0]
+
+    # Explain approval, risk, and sponsor match score
+    exp_app = workspace.get(f"/api/events/{event.id}/explain/approval/{approval['id']}").json()
+    assert exp_app['rules'] and exp_app['constraints']
+    assert exp_app['audit_log'][0]['to_status'] == 'Automated Outcome Created'
+
+    exp_spon = workspace.get(f"/api/events/{event.id}/explain/sponsor/{sponsor['id']}").json()
+    assert any(s['metric'] == 'Match score' for s in exp_spon['scores'])
+
+    # Submit appeal on risk
+    res = event.action('appeal_decision', {
+        'target_type': 'risk',
+        'target_id': risk['id'],
+        'reason': 'This risk is mitigated by offline sponsor pledge',
+        'override_request': 'Close risk after manual verification',
+    })
+    assert res['status'] == 'Flagged'
+    aid = res['appeal_id']
+
+    # Transition Flagged -> Under Review -> Overridden (with apply_override)
+    event.action('update_appeal_status', {
+        'appeal_id': aid,
+        'status': 'Under Review',
+        'resolution_note': 'Reviewing offline MoU document',
+    })
+    event.action('update_appeal_status', {
+        'appeal_id': aid,
+        'status': 'Overridden',
+        'resolution_note': 'Verified MoU signed; closing risk',
+        'apply_override': True,
+    })
+
+    final_exp = workspace.get(f"/api/events/{event.id}/explain/risk/{risk['id']}").json()
+    assert final_exp['appeals'][0]['status'] == 'Overridden'
+    transitions = [(row['from_status'], row['to_status']) for row in final_exp['audit_log']]
+    assert transitions == [
+        ('', 'Automated Outcome Created'),
+        ('Automated Outcome', 'Flagged'),
+        ('Flagged', 'Under Review'),
+        ('Under Review', 'Overridden'),
+    ]
+    assert all(row['created_at'] for row in final_exp['audit_log'])
+    assert next(r for r in event.snapshot()['risks'] if r['id'] == risk['id'])['status'] == 'Closed'

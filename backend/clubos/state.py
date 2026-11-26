@@ -115,6 +115,10 @@ def funding(c,event):
 def workspace(c,eid):
     e=get_event(c,eid)
     result=dict(event=e,members=team(c,eid),tasks=task_rows(c,eid),budget=budgets(c,eid))
+    from .disruptions import history
+    result['disruptions']=history(c,eid)
+    brief=c.execute('SELECT prompt,details FROM event_briefs WHERE event_id=?',(eid,)).fetchone()
+    result['event_brief']=dict(prompt=brief['prompt'],details=json.loads(brief['details'])) if brief else None
     for table in ['participants','marketing','milestones','packages','risks','approvals','runs','activity','communications','payments','workflows']:
         result[table]=rows(c,f'SELECT * FROM {table} WHERE event_id=? ORDER BY rowid DESC',(eid,))
     for w in result['workflows']:
@@ -168,6 +172,8 @@ def workspace(c,eid):
     from .planning import TOOLS
     from .poster_studio import list_posters
     result['posters']=list_posters(c,eid)
+    result['appeals']=rows(c,'SELECT * FROM decision_appeals WHERE event_id=? ORDER BY rowid DESC',(eid,))
+    result['decision_audit_logs']=rows(c,'SELECT * FROM decision_audit_logs WHERE event_id=? ORDER BY created_at DESC,rowid DESC LIMIT 100',(eid,))
     result['agent_tools']={agent:sorted(tools) for agent,tools in TOOLS.items()}
     result['metrics']=m
     counts=Counter(p['created_at'][:10] for p in result['participants'])

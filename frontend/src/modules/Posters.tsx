@@ -1,30 +1,35 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Download, Image as ImageIcon, KeyRound, Palette, RefreshCw, Sparkles, Trash2, Upload, Wand2 } from 'lucide-react'
-import { AgentMark } from '../Identity'
+import { Check, Download, Image as ImageIcon, KeyRound, Palette, Trash2, Upload, Wand2 } from 'lucide-react'
+import { DecisionExplainControl } from '../DecisionExplain'
 import { api, type PosterItem } from '../data'
-import { Button, Dialog, Empty, Field, Head, Panel, Pill, day, type ViewProps } from './ui'
+import { Button, Dialog, Empty, Field, Head, Panel, Pill, Tabs, day, type ViewProps } from './ui'
 
 const promptSuggestions = [
-  'Cyberpunk neon city with glowing circuit lines and Prize Pool ₹50,000',
-  'Futuristic robotic mecha blueprint with metallic cyan & amber accents',
-  'Swiss minimalist editorial poster on crisp off-white paper with bold typography',
-  'Retro 80s synthwave grid sunset with glowing magenta & cyan horizon',
+  ['Cyberpunk', 'Cyberpunk neon city with glowing circuit lines and Prize Pool ₹50,000'],
+  ['Robotic blueprint', 'Futuristic robotic mecha blueprint with metallic cyan & amber accents'],
+  ['Swiss minimal', 'Swiss minimalist editorial poster on crisp off-white paper with bold typography'],
+  ['Retro synthwave', 'Retro 80s synthwave grid sunset with glowing magenta & cyan horizon'],
 ]
 
-export default function Posters({ data, refresh }: ViewProps & { refresh?: () => Promise<void> }) {
+export default function Posters({ data, act, refresh }: ViewProps & { refresh?: () => Promise<void> }) {
   const eid = data.event.id
   const [posters, setPosters] = useState<PosterItem[]>(data.posters || [])
   const [selectedId, setSelectedId] = useState<string>('')
   const [prompt, setPrompt] = useState('')
+  const [referenceChoice, setReferenceChoice] = useState('')
+  const [revise, setRevise] = useState(false)
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState<'reference' | 'final' | null>(null)
   const [notice, setNotice] = useState('')
   const [aiWarning, setAiWarning] = useState('')
   const [error, setError] = useState('')
-  const [aiStatus, setAiStatus] = useState<{ openai_configured: boolean; gemini_configured: boolean }>({ openai_configured: false, gemini_configured: false })
+  const [aiStatus, setAiStatus] = useState<{ openai_configured: boolean; gemini_configured: boolean; cloudflare_configured?: boolean; free_ai_available?: boolean }>({ openai_configured: false, gemini_configured: false, free_ai_available: true })
   const [keyModal, setKeyModal] = useState(false)
   const [openaiKey, setOpenaiKey] = useState('')
   const [geminiKey, setGeminiKey] = useState('')
+  const [cfAccountId, setCfAccountId] = useState('')
+  const [cfApiToken, setCfApiToken] = useState('')
+  const [tab, setTab] = useState('Create')
   const refInput = useRef<HTMLInputElement>(null)
   const finalInput = useRef<HTMLInputElement>(null)
 
@@ -32,7 +37,7 @@ export default function Posters({ data, refresh }: ViewProps & { refresh?: () =>
     api<{ posters: PosterItem[] }>(`/api/events/${encodeURIComponent(eid)}/posters`)
       .then(res => setPosters(res.posters || []))
       .catch(() => { })
-    api<{ openai_configured: boolean; gemini_configured: boolean }>('/api/integrations/ai/status')
+    api<{ openai_configured: boolean; gemini_configured: boolean; cloudflare_configured?: boolean; free_ai_available?: boolean }>('/api/integrations/ai/status')
       .then(setAiStatus)
       .catch(() => { })
   }, [eid, data.posters?.length])
@@ -40,27 +45,30 @@ export default function Posters({ data, refresh }: ViewProps & { refresh?: () =>
   const activePoster = posters.find(p => p.is_active) || posters.find(p => p.kind !== 'reference') || posters[0]
   const viewed = posters.find(p => p.id === selectedId) || activePoster
   const references = posters.filter(p => p.kind === 'reference')
-  const latestRef = references[0]
+  const latestRef = references.find(item=>item.id===referenceChoice)
+  const raster = viewed && /^image\/(png|jpeg|webp)$/.test(viewed.mime_type)
 
   async function saveKeys(e: React.FormEvent) {
     e.preventDefault()
     setBusy(true); setError(''); setNotice('')
     try {
-      const res = await api<{ openai_configured: boolean; gemini_configured: boolean; message: string }>(
+      const res = await api<{ openai_configured: boolean; gemini_configured: boolean; cloudflare_configured?: boolean; free_ai_available?: boolean; message: string }>(
         '/api/integrations/ai/keys',
         {
           method: 'POST',
           body: JSON.stringify({
             ...(openaiKey.trim() ? { openai_api_key: openaiKey.trim() } : {}),
             ...(geminiKey.trim() ? { gemini_api_key: geminiKey.trim() } : {}),
+            ...(cfAccountId.trim() ? { cloudflare_account_id: cfAccountId.trim() } : {}),
+            ...(cfApiToken.trim() ? { cloudflare_api_token: cfApiToken.trim() } : {}),
           }),
         },
       )
-      setAiStatus({ openai_configured: res.openai_configured, gemini_configured: res.gemini_configured })
-      setOpenaiKey(''); setGeminiKey('')
+      setAiStatus({ openai_configured: res.openai_configured, gemini_configured: res.gemini_configured, cloudflare_configured: res.cloudflare_configured, free_ai_available: res.free_ai_available })
+      setOpenaiKey(''); setGeminiKey(''); setCfAccountId(''); setCfApiToken('')
       setKeyModal(false)
       setAiWarning('')
-      setNotice('AI key saved! Try generating a poster with any prompt now.')
+      setNotice('AI provider settings saved! Try generating a poster with any prompt now.')
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -72,14 +80,16 @@ export default function Posters({ data, refresh }: ViewProps & { refresh?: () =>
     setBusy(true); setError(''); setNotice(''); setAiWarning('')
     try {
       const pText = (customPrompt ?? prompt).trim()
-      const baseId = viewed?.kind === 'generated' ? viewed.id : undefined
+      const referenceId = useRefId || latestRef?.id
+      const baseId = revise && raster && !referenceId ? viewed.id : undefined
       const res = await api<{ message: string; poster: PosterItem & { ai_notice?: string }; posters: PosterItem[] }>(
         `/api/events/${encodeURIComponent(eid)}/posters/generate`,
         {
           method: 'POST',
           body: JSON.stringify({
             prompt: pText,
-            reference_poster_id: useRefId || latestRef?.id || null,
+            reference_poster_id: referenceId || null,
+            require_ai: true,
             base_poster_id: pText ? baseId : null,
           }),
         },
@@ -105,12 +115,14 @@ export default function Posters({ data, refresh }: ViewProps & { refresh?: () =>
     try {
       const fd = new FormData()
       fd.append('mode', mode)
+      fd.append('generate', 'false')
       fd.append('prompt', prompt.trim())
       fd.append('file', file)
       const res = await fetch(`/api/events/${encodeURIComponent(eid)}/posters/upload`, { method: 'POST', body: fd })
       const body = await res.json().catch(() => null)
       if (!res.ok) throw new Error(body?.detail || 'Upload failed.')
       setPosters(body.posters || [])
+      if (mode==='reference') setReferenceChoice(body.uploaded_id)
       if (body.generated?.id) {
         setSelectedId(body.generated.id)
         if (body.generated.ai_notice) {
@@ -201,11 +213,11 @@ export default function Posters({ data, refresh }: ViewProps & { refresh?: () =>
   return <>
     <Head
       title="Poster Studio"
-      sub={`Canvas designs AI posters for ${data.event.name} using OpenAI gpt-image-1 / Google Nano Banana with your prompts and reference posters.`}
+      sub={`Canvas designs AI posters for ${data.event.name} from your design prompts and saved event details.`}
       action={
         <div className="m-actions" style={{ margin: 0 }}>
           <Button onClick={() => setKeyModal(true)}>
-            <KeyRound size={14} /> {aiStatus.openai_configured ? 'OpenAI Image Active' : 'Add ChatGPT / AI Key'}
+            <KeyRound size={14} /> AI settings
           </Button>
           {viewed && <>
             <a className="m-btn" href={viewed.image_url} download={`${data.event.id}-poster.${viewed.mime_type === 'image/svg+xml' ? 'svg' : 'png'}`}>
@@ -215,19 +227,16 @@ export default function Posters({ data, refresh }: ViewProps & { refresh?: () =>
               <Button onClick={() => downloadPng(viewed)}><Download size={14} /> Export PNG</Button>
             )}
           </>}
-          <Button primary busy={busy} onClick={() => generatePoster(prompt || 'Design a striking modern technical event poster')}>
-            <RefreshCw size={14} /> Generate Poster
-          </Button>
         </div>
       }
     />
 
-    {!aiStatus.openai_configured && (
+    {!aiStatus.openai_configured && !aiStatus.gemini_configured && !aiStatus.cloudflare_configured && (
       <div className="mc-banner-info" style={{ marginBottom: 14 }}>
         <span>
-          <strong>AI Image Tip:</strong> Add your OpenAI (ChatGPT) API key so Canvas uses <code>gpt-image-1</code> to render real bespoke posters from your prompts and uploaded reference images (or enable billing for Google Nano Banana).
+          <strong>Free AI Studio Active:</strong> Prompts generate custom artwork with <strong>FLUX.1-schnell</strong> (no paid key needed) and overlay your verified event details &amp; QR code. Optionally add Cloudflare Workers AI, OpenAI, or Gemini keys.
         </span>
-        <Button onClick={() => setKeyModal(true)}><KeyRound size={14} /> Add OpenAI API Key</Button>
+        <Button onClick={() => setKeyModal(true)}><KeyRound size={14} /> Configure Providers</Button>
       </div>
     )}
 
@@ -235,10 +244,10 @@ export default function Posters({ data, refresh }: ViewProps & { refresh?: () =>
     {aiWarning && <div className="m-notice error" role="status">{aiWarning}</div>}
     {notice && <div className="m-notice success" role="status">{notice}</div>}
 
-    <div className="mc-split" style={{ gridTemplateColumns: 'minmax(0, 1.05fr) minmax(0, 1fr)' }}>
+    <div className="studio-grid">
       {/* Left: Poster Preview */}
       <Panel
-        title={viewed ? viewed.title : 'Event Poster Preview'}
+        title="Preview"
         action={viewed && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Pill tone={viewed.is_active ? 'mint' : viewed.kind === 'reference' ? 'amber' : 'neutral'}>
@@ -250,100 +259,61 @@ export default function Posters({ data, refresh }: ViewProps & { refresh?: () =>
           </div>
         )}
       >
-        <div className="m-pad" style={{ background: '#F8FAFC', display: 'grid', placeItems: 'center', position: 'relative' }}>
-          {busy && (
-            <div style={{ padding: '8px 14px', borderRadius: 999, background: '#0F172A', color: '#fff', fontSize: 12.5, fontWeight: 600, marginBottom: 12 }}>
-              Canvas is designing your AI poster…
-            </div>
-          )}
-          {viewed ? (
-            <div style={{ width: '100%', maxWidth: 460 }}>
-              <img
-                src={viewed.image_url + '?t=' + encodeURIComponent(viewed.created_at)}
-                alt={viewed.title}
-                style={{
-                  width: '100%',
-                  borderRadius: 12,
-                  border: '1px solid #E2E8F0',
-                  boxShadow: '0 10px 30px rgba(15, 23, 42, 0.12)',
-                  display: 'block',
-                  background: '#0F172A',
-                }}
-              />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, fontSize: 12, color: '#64748B' }}>
-                <span>Created by <strong>{viewed.created_by}</strong> · {viewed.theme}</span>
-                <span>{day(viewed.created_at)}</span>
-              </div>
-              {viewed.prompt && (
-                <p style={{ marginTop: 6, fontSize: 12.5, color: '#475569', background: '#FFFFFF', padding: '8px 10px', borderRadius: 8, border: '1px solid #E2E8F0' }}>
-                  <strong>Prompt:</strong> {viewed.prompt}
-                </p>
-              )}
-            </div>
-          ) : (
-            <Empty title="No poster generated yet" detail="Click Generate Poster to let Canvas create an event poster." />
+        <div className="m-pad studio-preview">
+          {busy && <p className="studio-busy" role="status">Canvas is designing your AI poster…</p>}
+          {viewed ? <>
+            <img src={viewed.image_url + '?t=' + encodeURIComponent(viewed.created_at)} alt={viewed.title} />
+            <p className="studio-caption" title={viewed.title}>{viewed.title}</p>
+            <details className="studio-details" key={viewed.id}>
+              <summary>Poster details</summary>
+              <p>Created by <strong>{viewed.created_by}</strong> · {viewed.theme} · {day(viewed.created_at)}</p>
+              {viewed.prompt && <p><strong>Prompt:</strong> {viewed.prompt}</p>}
+              <DecisionExplainControl data={data} act={act} targetType="poster" targetId={viewed.id} />
+            </details>
+          </> : (
+            <Empty title="No poster generated yet" detail="Describe a design and click Generate to create an event poster." />
           )}
         </div>
       </Panel>
 
       {/* Right: Prompt Editor + Uploads + Versions */}
-      <div className="m-stack">
-        <section className="m-card">
-          <div className="m-titleline" style={{ marginBottom: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <AgentMark name="Canvas" />
-              <div>
-                <h3>Generate / Edit Poster with Prompt</h3>
-                <span className="m-sub">Uses OpenAI gpt-image-1 / Google Nano Banana with full event context</span>
-              </div>
-            </div>
-            {latestRef && <Pill tone="purple">Reference Attached</Pill>}
-          </div>
+      <section className="m-card studio-side">
+        <Tabs options={['Create', 'Upload', 'Versions']} current={tab} onChange={setTab} />
 
-          <form className="m-form" onSubmit={e => { e.preventDefault(); void generatePoster() }}>
+        {tab === 'Create' && (
+          <form className="m-form" onSubmit={e => { e.preventDefault(); void generatePoster(prompt.trim() || latestRef ? undefined : 'Design a striking modern technical event poster') }}>
             <Field label="Design prompt">
               <textarea
-                rows={3}
+                rows={4}
+                maxLength={1200}
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
-                placeholder='e.g. "Futuristic robotic hackathon poster with glowing cyan mecha illustration, ₹50,000 prize pool, bold geometric typography"'
+                placeholder="Describe the artwork, layout and mood. Event details are added for you."
               />
             </Field>
-            <div className="m-actions" style={{ marginTop: 0 }}>
-              {promptSuggestions.map(s => (
-                <button
-                  key={s}
-                  type="button"
-                  className="m-btn"
-                  style={{ fontSize: 11.5, padding: '4px 9px' }}
-                  onClick={() => { setPrompt(s); void generatePoster(s) }}
-                >
-                  <Sparkles size={11} /> {s.split(' ').slice(0, 4).join(' ')}…
-                </button>
+            {references.length>0&&<Field label="Style reference"><select value={referenceChoice} onChange={event=>setReferenceChoice(event.target.value)}>
+              <option value="">None</option>{references.filter(item=>/^image\/(png|jpeg|webp)$/.test(item.mime_type)).map(item=><option value={item.id} key={item.id}>{item.title}</option>)}
+            </select></Field>}
+            {raster&&viewed.kind!=='reference'&&!latestRef&&<label className="studio-check"><input type="checkbox" checked={revise} onChange={event=>setRevise(event.target.checked)}/> Revise the selected poster</label>}
+            <div className="studio-ideas">
+              <span>Ideas</span>
+              {promptSuggestions.map(([label, text]) => (
+                <button key={label} type="button" title={text} aria-pressed={prompt === text} onClick={() => setPrompt(text)}>{label}</button>
               ))}
             </div>
-            <div className="m-actions">
-              <Button primary type="submit" busy={busy} disabled={!prompt.trim() && !posters.length}>
-                <Wand2 size={14} /> Apply Prompt &amp; Generate
-              </Button>
-            </div>
+            <Button primary type="submit" busy={busy}>
+              <Wand2 size={14} /> Generate poster
+            </Button>
           </form>
-        </section>
+        )}
 
-        {/* User Upload: Reference or Final Poster */}
-        <section className="m-card">
-          <div className="m-titleline" style={{ marginBottom: 8 }}>
-            <h3>Upload Your Own Poster</h3>
-            <Pill>PNG · JPG · WEBP · SVG</Pill>
-          </div>
-          <p className="m-copy" style={{ marginTop: 0 }}>
-            Upload a poster as a <strong>Reference</strong> for Canvas to match its style, layout, and colors, or upload your finished design directly as the <strong>Final Poster</strong>.
-          </p>
+        {tab === 'Upload' && <div className="studio-upload">
+          <p className="m-copy">A <strong>reference</strong> guides Canvas on style. A <strong>final poster</strong> is used as is. PNG, JPG, WEBP, or SVG for final posters.</p>
 
           <input
             ref={refInput}
             type="file"
-            accept="image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg"
+            accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
             style={{ display: 'none' }}
             onChange={e => { void uploadPoster('reference', e.target.files?.[0]); e.target.value = '' }}
           />
@@ -376,14 +346,13 @@ export default function Posters({ data, refresh }: ViewProps & { refresh?: () =>
                 <small style={{ color: '#64748B', fontSize: 11.5 }}>Active style reference for Canvas</small>
               </div>
               <Button busy={busy} onClick={() => generatePoster(prompt || 'Generate an event poster matching the uploaded reference poster style', latestRef.id)}>
-                Apply Style
+                Generate from reference
               </Button>
             </div>
           )}
-        </section>
+        </div>}
 
-        {/* Version History */}
-        <Panel title={`Poster Versions (${posters.length})`}>
+        {tab === 'Versions' && <div className="studio-versions">
           {posters.length ? (
             <div className="m-list">
               {posters.map(p => (
@@ -430,16 +399,32 @@ export default function Posters({ data, refresh }: ViewProps & { refresh?: () =>
           ) : (
             <Empty title="No poster versions yet" />
           )}
-        </Panel>
-      </div>
+        </div>}
+      </section>
     </div>
 
     {keyModal && (
-      <Dialog title="Configure AI Image & Search Keys" onClose={() => setKeyModal(false)}>
+      <Dialog title="Configure AI Image Providers" onClose={() => setKeyModal(false)}>
         <p className="m-copy">
-          Paste your <strong>OpenAI (ChatGPT) API key</strong> so Canvas uses <code>gpt-image-1</code> (or <code>dall-e-3</code>) to generate real bespoke posters from prompts and reference images, and Magnet uses GPT for sponsor discovery. Saved securely to <code>.env</code>.
+          Free <strong>FLUX.1-schnell</strong> generation is already enabled with no key required. You can optionally add <strong>Cloudflare Workers AI</strong> (free daily tier), <strong>OpenAI</strong>, or <strong>Gemini</strong> keys.
         </p>
         <form className="m-form" onSubmit={saveKeys}>
+          <Field label={`Cloudflare Account ID ${aiStatus.cloudflare_configured ? '(Configured)' : '(Free tier optional)'}`}>
+            <input
+              type="text"
+              placeholder="32-char Cloudflare account ID"
+              value={cfAccountId}
+              onChange={e => setCfAccountId(e.target.value)}
+            />
+          </Field>
+          <Field label={`Cloudflare API Token ${aiStatus.cloudflare_configured ? '(Configured)' : '(Free tier optional)'}`}>
+            <input
+              type="password"
+              placeholder="Cloudflare Workers AI token"
+              value={cfApiToken}
+              onChange={e => setCfApiToken(e.target.value)}
+            />
+          </Field>
           <Field label={`OpenAI API Key ${aiStatus.openai_configured ? '(Configured)' : ''}`}>
             <input
               type="password"
@@ -458,7 +443,7 @@ export default function Posters({ data, refresh }: ViewProps & { refresh?: () =>
           </Field>
           <div className="m-actions">
             <Button onClick={() => setKeyModal(false)}>Cancel</Button>
-            <Button primary busy={busy} type="submit" disabled={!openaiKey.trim() && !geminiKey.trim()}>Save Keys</Button>
+            <Button primary busy={busy} type="submit" disabled={!openaiKey.trim() && !geminiKey.trim() && !(cfAccountId.trim() && cfApiToken.trim())}>Save Keys</Button>
           </div>
         </form>
       </Dialog>

@@ -16,6 +16,7 @@ def create(c,data,club_id,execution=None):
     if iso(data['start_date'])>iso(data['end_date']):raise Invalid('Event end date must be on or after the start.')
     brief=data.pop('brief','')
     budget=data.pop('estimated_budget',None)
+    reviewed=data.pop('brief_plan',None)
     chosen=data.pop('members',[])
     if 'constraints' in data:data['constraints_text']=data.pop('constraints')
     insert(c,'events',id=eid,club_id=club_id,registration_milestone=max(1,data['target']//2),milestone_date=min(iso(data['start_date']),max(date.today(),iso(data['start_date'])-timedelta(days=7))).isoformat(),created_at=now(),**data)
@@ -34,10 +35,20 @@ def create(c,data,club_id,execution=None):
     if brief:
         from . import launch
         with flow.tool('Nexus','decode_brief',{'event_name':data['name']}) as step:
-            plan,mode,detail=launch.interpret(data,brief,budget)
+            if reviewed:
+                plan=launch.BriefPlan.model_validate(reviewed)
+                start,end=iso(data['start_date']),iso(data['end_date'])
+                if plan.registration_deadline>start or not start<=plan.submission_deadline<=end:
+                    raise Invalid('Registration must close by the event start, and submissions must close during the event.')
+                if plan.estimated_budget<data['initial_budget']:
+                    raise Invalid('The total budget must cover the club funds allocated to this event.')
+                mode,detail='Reviewed brief',''
+            else:
+                plan,mode,detail=launch.interpret(data,brief,budget)
+            c.execute('INSERT INTO event_briefs VALUES (?,?,?)',(eid,brief,encode(plan.model_dump(mode='json'))))
             gap=plan.estimated_budget-data['initial_budget']
             c.execute('UPDATE events SET sponsorship_target=?,goals=?,milestone_date=? WHERE id=?',
-                      (gap,brief,plan.registration_deadline.isoformat(),eid))
+                      (gap,(' · '.join(filter(None,[f"Tracks: {', '.join(plan.tracks)}" if plan.tracks else '',plan.sponsor_needs])) or data['type']) if reviewed else brief,plan.registration_deadline.isoformat(),eid))
             step.update(summary=f'Understood the event brief. Sponsorship target is {recovery.currency(gap)}.',mode=mode,
                         output={**plan.model_dump(mode='json'),'sponsorship_gap':gap,'club_funds':data['initial_budget']})
         flow.e=get_event(c,eid)
@@ -147,6 +158,18 @@ def route(f,k,p):
     if k.startswith('demo_'):return demo(f,k)
     if k in ('approve','reject'):return recovery.decide(f,p,k=='approve')
     if k=='budget_optimize':return recovery.optimize(f)
+    if k=='campus_disruption':
+        from .disruptions import trigger
+        return trigger(f,p)
+    if k=='retry_disruption_emails':
+        from .disruptions import retry_notifications
+        return retry_notifications(f,p)
+    if k=='appeal_decision':
+        from .explainability import submit_appeal
+        return submit_appeal(f,p)
+    if k=='update_appeal_status':
+        from .explainability import transition_appeal
+        return transition_appeal(f,p)
     if k=='delay_task':return recovery.delay(f,p.get('task_id'),p.get('days',2))
     if k=='risk_scan':return scan(f)
     if k=='edit_approval':return recovery.edit(f,p)
@@ -224,8 +247,11 @@ def route(f,k,p):
     if k in ('add_task','update_task'):return ops.edit_task(f,p,k=='update_task')
     if k in ('add_participant','check_in','import_participants'):return ops.register(f,p,k)
     if k in ('add_expense','edit_expense'):return ops.expense(f,p,k=='edit_expense')
+    if k=='delete_expense':return ops.delete_expense(f,p)
     if k in ('save_marketing','generate_marketing'):return ops.campaign(f,p,k=='generate_marketing')
-    if k=='copilot':return ops.copilot(f,p)
+    if k in ('copilot','copilot_send'):
+        from . import copilot
+        return copilot.ask(f,p) if k=='copilot' else copilot.deliver(f,p)
     if k=='import_sponsors':return ops.imports(f,p)
     if k=='update_package':
         b=scoped(c,'packages',p.get('package_id'),f.id)
