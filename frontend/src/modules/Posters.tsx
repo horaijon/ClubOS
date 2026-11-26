@@ -335,7 +335,7 @@ export default function Posters({ data, act, refresh }: ViewProps & { refresh?: 
           </div>
 
           {latestRef && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, padding: 10, borderRadius: 10, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, padding: 10, borderRadius: 10, background: 'var(--paper)', border: '1px solid #E2E8F0' }}>
               <img
                 src={latestRef.image_url}
                 alt="Reference poster"

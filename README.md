@@ -71,6 +71,8 @@ Connected accounts send real email: sponsor outreach, approved Copilot messages 
 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | Poster artwork through Workers AI |
 | `CLUBOS_LOCAL_COPILOT_MODEL`, `CLUBOS_LOCAL_COPILOT_PORT` | A local OpenAI-compatible model for Copilot (default port 8031) |
 
+On Apple silicon Macs, `./start.sh` starts the local model with `mlx_lm.server` when `CLUBOS_LOCAL_COPILOT_MODEL` is set and its port is free. The first run may download the model, and output goes to `backend/data/local-model.log`. It can keep running after you stop ClubOS, and the next start reuses it.
+
 Without keys, ClubOS falls back to labelled deterministic agents. Poster Studio can also call free public image services. Event context, prompts and submitted sponsor text are sent to whichever external provider handles a request. Secrets stay server-side.
 
 ## Engineering and verification

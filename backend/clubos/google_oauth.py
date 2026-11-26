@@ -452,6 +452,11 @@ def google_auth_url(request: Request, club: auth.Workspace):
     session_token=request.cookies.get(auth.COOKIE)
     if not session_token:
         raise HTTPException(401,"Log in before connecting Google.")
+    if os.getenv("CLUBOS_PUBLIC_URL"):
+        # Anyone can open the hosted demo, so it must never hold a real mailbox.
+        with db.transaction() as conn:
+            if (auth.session(conn, request) or {}).get("demo"):
+                raise HTTPException(403,"Create an organizer account to connect Google.")
     state = secrets.token_urlsafe(24)
     now_ts = int(time.time())
     flow = _build_flow(state=state)

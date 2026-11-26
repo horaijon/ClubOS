@@ -88,7 +88,7 @@ svg {
   z-index: 100;
   transform: translateY(-160%);
   background: var(--accent);
-  color: #fff;
+  color: var(--paper);
   padding: 12px;
   border-radius: 6px
 }
@@ -553,7 +553,7 @@ svg {
   border-radius: 22px;
   background: var(--brand-grid), var(--cobalt);
   background-size: 48px 48px;
-  color: #fff;
+  color: var(--paper);
   box-shadow: 0 8px 24px #18399521
 }
 
@@ -1949,7 +1949,7 @@ svg {
 }
 
 .sidebar.glass--cobalt {
-  --text: #fff;
+  --text: var(--paper);
   --secondary: #f1f4ff;
   --muted: #d4dfff;
   --line: #9db7ff63;
@@ -1961,7 +1961,7 @@ svg {
 
 .sidebar .nav-link:hover,
 .sidebar .nav-link.active {
-  color: #fff;
+  color: var(--paper);
 }
 
 .sidebar .nav-link.active svg {
@@ -1974,13 +1974,13 @@ svg {
 }
 
 .sidebar :focus-visible {
-  outline-color: #fff;
+  outline-color: var(--paper);
 }
 
 .event-hero {
   --muted: #dce6ff;
   --secondary: #f2f5ff;
-  --text: #fff;
+  --text: var(--paper);
   --accent: var(--lime);
   --line: #adc7ff69;
   --amber: #ffe2a7;

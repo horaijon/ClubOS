@@ -6,9 +6,9 @@
   --lime: #d3fa57;
   --lime-hover: #e4ff90;
   --ink: #0f172a;
-  --paper: #ffffff;
+  --paper: #FFFAFA;
   --bg: #F6F8FC;
-  --surface: #FFFFFF;
+  --surface: var(--paper);
   --raised: #F1F5F9;
   --line: #E5EAF2;
   --text: var(--ink);
@@ -26,11 +26,11 @@
   --emerald-tint: #ECFDF5;
   --royal-blue: #3B82F6;
   --canvas: #F6F8FC;
-  --card: #FFFFFF;
+  --card: var(--paper);
   --card-border: #E5EAF2;
   --card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.03);
   --brand-grid: linear-gradient(#ffffff1c 1px,transparent 1px),linear-gradient(90deg,#ffffff1c 1px,transparent 1px);
-  --glass-fill: #ffffff;
+  --glass-fill: var(--paper);
   --glass-border: #E5EAF2;
   --glass-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 8px 24px rgba(15, 23, 42, 0.04);
   --glass-filter: none;
@@ -46,10 +46,10 @@
   --glass-fill: #1330ae;
   --glass-border: #bfd3ff59;
   --glass-shadow: 0 10px 30px #0716612c,inset 0 1px 0 #ffffff3d;
-  color:#fff;
+  color:var(--paper);
 }
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :root { --glass-fill: rgba(255, 255, 255, 0.92); --glass-filter: blur(16px) saturate(1.2); }
+  :root { --glass-fill: rgba(255, 250, 250, 0.92); --glass-filter: blur(16px) saturate(1.2); }
   .glass--cobalt { --glass-fill: #1330aeb8; }
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {

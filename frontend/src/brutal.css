@@ -9,7 +9,7 @@ body .shell {
   --nb-shadow: 6px 6px 0 var(--ink);
   --nb-shadow-sm: 3px 3px 0 var(--ink);
   --nb-soft: #dce4ff;
-  --nb-card: #F2F0EF;
+  --nb-card: #FFFAFA;
   --text: var(--ink);
   --secondary: #1e293b;
   --muted: #475569;
@@ -20,7 +20,7 @@ body .shell {
 
 /* ---------- Sidebar: floating rounded panel in a lighter off-white ---------- */
 body .shell .sidebar.glass {
-  --nb-side: #FBFAF9;
+  --nb-side: #FFFAFA;
   --text: var(--ink); --secondary: var(--ink); --muted: #475569; --line: #cfd3de;
   --raised: var(--nb-soft); --surface: var(--nb-side); --accent: var(--cobalt); --blue-tint: var(--nb-soft);
   color: var(--ink);
@@ -42,7 +42,7 @@ body .shell .sidebar .nav-link:hover { background: var(--nb-soft); border-color:
 body .shell .sidebar .nav-link.active { background: var(--lime); color: var(--ink); border-color: var(--ink); box-shadow: var(--nb-shadow-sm); }
 body .shell .sidebar .nav-link.active::before { display: none; }
 body .shell .sidebar .nav-link.active svg { color: var(--ink); }
-body .shell .sidebar .nav-link b { background: var(--cobalt); color: #fff; }
+body .shell .sidebar .nav-link b { background: var(--cobalt); color: var(--paper); }
 body .shell .sidebar .profile { --muted: var(--ink); background: #a2b0f2; padding: 10px; width: 100%; margin: 9px 0 14px; }
 body .shell.narrow .sidebar :is(.club-select, .profile) { padding-left: 4px; padding-right: 4px; justify-content: center; }
 body .shell .avatar { background: var(--lime); color: var(--ink); border: 2px solid var(--ink); }
@@ -50,7 +50,7 @@ body .shell .sidebar :focus-visible { outline-color: var(--cobalt); }
 
 /* ---------- Top bar: controls sit straight on the canvas ---------- */
 body .shell .topbar.glass {
-  --text: var(--ink); --secondary: var(--ink); --muted: #334155; --line: var(--ink); --raised: var(--nb-soft); --surface: #fff;
+  --text: var(--ink); --secondary: var(--ink); --muted: #334155; --line: var(--ink); --raised: var(--nb-soft); --surface: var(--paper);
   color: var(--ink);
   background: #a2b0f2;
   border: 0;
@@ -62,11 +62,11 @@ body .shell .topbar.glass {
   height: 72px;
 }
 body .shell .topbar :is(.command-search, .google-pill, .copilot-btn, .icon-button, .mobile-menu) {
-  background: #fff; color: var(--ink); border: var(--nb-edge); border-radius: 12px; box-shadow: var(--nb-shadow-sm);
+  background: var(--paper); color: var(--ink); border: var(--nb-edge); border-radius: 12px; box-shadow: var(--nb-shadow-sm);
 }
 body .shell .topbar .copilot-btn { background: var(--lime); font-weight: 800; }
 body .shell .topbar .command-search kbd { border: 1.5px solid var(--ink); background: var(--nb-soft); color: var(--ink); }
-body .shell .topbar .notifications i { background: var(--cobalt); box-shadow: 0 0 0 2px #fff; }
+body .shell .topbar .notifications i { background: var(--cobalt); box-shadow: 0 0 0 2px var(--paper); }
 body .shell .topbar :focus-visible { outline-color: var(--cobalt-deep); }
 
 /* ---------- Headings ---------- */
@@ -88,7 +88,7 @@ body .shell :is(.mc-kpi-card, .m-stat, .m-card):hover { transform: translate(-2p
 body .shell :is(.mc-agent-pill, .mc-approval-card, .mc-banner-info, .m-notice) { border: 2px solid var(--ink); border-radius: 14px; box-shadow: var(--nb-shadow-sm); }
 body .shell :is(.mc-kpi-icon, .mc-agent-pill > svg, .m-pill, .mc-mini-pill, .mc-meta-pill, .mc-agent-status, .mc-impact-chip, .dash-event-context > span) { border: 1.5px solid var(--ink); }
 body .shell :is(.m-pill, .mc-mini-pill, .mc-meta-pill, .mc-agent-status, .mc-impact-chip) { font-weight: 700; }
-body .shell :is(.mc-progress, .readiness-track) { height: 12px; background: #fff; border: 1.5px solid var(--ink); border-radius: 99px; overflow: hidden; }
+body .shell :is(.mc-progress, .readiness-track) { height: 12px; background: var(--paper); border: 1.5px solid var(--ink); border-radius: 99px; overflow: hidden; }
 
 /* ---------- Every card is the same off-white ---------- */
 body .shell .main-content :is(.m-panel, .m-stat, .m-card, .mc-kpi-card, .mc-panel, .dash-panel, .metric, .trace-panel, .m-generator, .m-empty, .m-column, .m-item, .mc-agent-pill, .mc-approval-card, .mc-feed-item, .mc-banner-info, .m-notice, .event-options, .readiness-board),
@@ -112,7 +112,7 @@ body .shell :is(.m-view .m-btn.primary, .mc-approval-actions .m-btn.approve-btn,
 body .shell .icon-button { border: 2px solid var(--ink); border-radius: 10px; }
 
 /* ---------- Tabs and segmented controls ---------- */
-body .shell :is(.m-view .m-tabs, .dash-period) { background: #fff; border: var(--nb-edge); border-radius: 14px; box-shadow: var(--nb-shadow-sm); padding: 4px; gap: 4px; }
+body .shell :is(.m-view .m-tabs, .dash-period) { background: var(--paper); border: var(--nb-edge); border-radius: 14px; box-shadow: var(--nb-shadow-sm); padding: 4px; gap: 4px; }
 body .shell :is(.m-tabs, .dash-period) button { border: 2px solid transparent; border-radius: 9px; font-weight: 700; }
 body .shell :is(.m-view .m-tabs, .m-dialog .m-tabs, .dash-period) button[aria-pressed="true"] { background: var(--lime); color: var(--ink); border-color: var(--ink); box-shadow: none; }
 
@@ -124,7 +124,7 @@ body .shell .m-table th { color: var(--ink); font-family: var(--font-ui); font-w
 body .shell .m-table td { border-bottom: 1.5px solid var(--ink); }
 
 body .shell .m-view .m-stats .m-stat:nth-child(n) { border-color: var(--ink); }
-body .shell .m-view .m-search { background: #fff; border: 2px solid var(--ink); border-radius: 10px; box-shadow: var(--nb-shadow-sm); }
+body .shell .m-view .m-search { background: var(--paper); border: 2px solid var(--ink); border-radius: 10px; box-shadow: var(--nb-shadow-sm); }
 body .shell .m-view .m-search input { border: 0; border-radius: 0; box-shadow: none; }
 body .shell .m-view .m-search:focus-within { outline: 3px solid var(--cobalt); outline-offset: 2px; }
 body .shell .m-view .m-search input:focus-visible { outline: 0; }

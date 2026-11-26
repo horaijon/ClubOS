@@ -1,5 +1,5 @@
 .m-view {
-    --m-panel: var(--card, #FFFFFF);
+    --m-panel: var(--card, var(--paper));
     --m-lines: var(--card-border, #E5EAF2);
     --m-text: var(--text, #0f172a);
     --m-muted: var(--muted, #64748B);
@@ -99,7 +99,7 @@
 .m-view .m-btn.primary {
     background: #0F172A;
     border-color: #0F172A;
-    color: #FFFFFF
+    color: var(--paper)
 }
 
 .m-view .m-btn.primary:hover {
@@ -570,7 +570,7 @@
     text-align: left;
     width: 100%;
     margin: 0 0 8px;
-    background: #fff;
+    background: var(--paper);
     color: var(--m-text);
     border: 1px solid var(--line);
     border-radius: 8px;

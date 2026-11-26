@@ -77,7 +77,7 @@ export function Copilot({data,act,navigate,trace,traceConnected,traceRequest,emb
         {deliveryError&&<p role="alert">{deliveryError}</p>}
         <Notice state={state}/>
         <form className="m-form" onSubmit={event=>{event.preventDefault();ask(question)}}>
-          <Field label="Message"><textarea value={question} onChange={event=>setQuestion(event.target.value)} placeholder="What would you like Nexus to do?" rows={3} maxLength={2000} required/></Field>
+          <Field label="Message"><textarea value={question} onChange={event=>setQuestion(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.nativeEvent.isComposing){event.preventDefault();ask(question)}}} placeholder="What would you like Nexus to do?" rows={3} maxLength={2000} required/></Field>
           <div className="m-actions"><Button primary busy={state.busy||dispatching} disabled={!question.trim()||mic.listening} type="submit"><Send/> Ask Nexus</Button>
             {mic.supported&&<Button onClick={()=>mic.toggle(question,setQuestion)}>{mic.listening?'Stop dictation':'Dictate'}</Button>}</div>
           {mic.error&&<p role="alert">{mic.error}</p>}

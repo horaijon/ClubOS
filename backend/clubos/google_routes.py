@@ -137,6 +137,9 @@ def save_ai_keys_route(data: AiKeysRequest, club: auth.Workspace):
     from pathlib import Path
     from . import intelligence
 
+    if os.getenv("CLUBOS_PUBLIC_URL"):
+        raise HTTPException(403, "On the hosted site, set AI keys in the hosting dashboard's environment settings.")
+
     env_path = Path(__file__).resolve().parents[2] / ".env"
     existing_lines = env_path.read_text().splitlines() if env_path.exists() else []
     updates = {}

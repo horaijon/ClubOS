@@ -258,7 +258,7 @@ export default function Sponsors(props: ViewProps) {
     {tab === 'Outreach Queue' && (
       <div className="m-stack outreach">
         {/* Bulk Action Bar */}
-        <section className="m-card" style={{ background: '#F8FAFC' }}>
+        <section className="m-card" style={{ background: 'var(--paper)' }}>
           <div className="m-titleline">
             <div>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -81,7 +81,7 @@ def local_chat(messages, max_tokens=450):
         response = httpx.post(
             f"http://127.0.0.1:{port}/v1/chat/completions",
             json={"model": model, "messages": messages, "temperature": 0.0, "max_tokens": max_tokens},
-            timeout=httpx.Timeout(45.0, connect=1.0),
+            timeout=httpx.Timeout(60.0, connect=1.5),
         )
         response.raise_for_status()
         raw = response.json()["choices"][0]["message"]["content"].strip()

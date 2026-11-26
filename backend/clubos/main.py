@@ -17,6 +17,11 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
+# Render supplies the service's public address; use it unless one is configured.
+if os.getenv("RENDER_EXTERNAL_URL"):
+    os.environ.setdefault("CLUBOS_PUBLIC_URL", os.environ["RENDER_EXTERNAL_URL"])
+    os.environ.setdefault("GOOGLE_REDIRECT_URI",
+                          os.environ["CLUBOS_PUBLIC_URL"].rstrip("/") + "/api/integrations/google/callback")
 from . import api, auth, db, engine, forms_integration, gmail_integration, google_oauth, google_routes, poster_studio, trace, registration
 from .seed import CLUB
 from .reports import event_report

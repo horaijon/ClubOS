@@ -2,7 +2,7 @@
   border: 1px solid var(--border, #dce3f2);
   border-radius: 18px;
   padding: 16px;
-  background: var(--surface, #fff);
+  background: var(--surface, var(--paper));
   color: var(--ink, #152039);
   min-width: 0;
 }
@@ -29,7 +29,7 @@
 .shell-dialog.trace-drawer { margin: 0 0 0 auto; width: min(100%, 510px); max-width: 100%; max-height: 100dvh; height: 100dvh; border-radius: 22px 0 0 22px; padding: 0 18px 20px; }
 .trace-drawer .dialog-top { position: sticky; top: 0; background: #f5f7ff; z-index: 1; }
 .trace-drawer .m-view { margin: 0; padding: 0; }
-.trace-drawer .m-panel + .trace-panel { margin-top: 14px; }
+.m-panel + .trace-panel, .m-card + .trace-panel, .trace-drawer .m-panel + .trace-panel { margin-top: 18px; }
 .trace-banner { margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
 .orchestration-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .dash-mission { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 14px; margin-bottom: 14px; }
