@@ -1,4 +1,4 @@
-# ClubOS
+# ClubOS 
 
 **Plan. Sponsor. Execute. Automate.**
 
