@@ -99,7 +99,7 @@ export function Approvals({data,act,embedded}:ViewProps & {embedded?:boolean}){
   </>
 }
 
-export const agentNames=['Nexus','Atlas','Magnet','Ledger','Echo','Relay','Sentinel']
+export const agentNames=['Nexus','Atlas','Magnet','Ledger','Echo','Relay','Sentinel','Canvas']
 export function Agents({data,act,trace,traceConnected}:ViewProps){
   const state=useAction(act)
   const runs:Row[]=data.runs

@@ -162,6 +162,7 @@ def route(f,k,p):
             'Relay':('work_checklist',lambda:dict(open_operations=[t['title'] for t in task_rows(c,f.id)
                  if t['department']=='Operations' and t['status']!='Completed'])),
             'Nexus':('query_event_state',lambda:workspace(c,f.id)['metrics']),
+            'Canvas':('generate_poster',lambda:dict(posters=len(workspace(c,f.id)['posters']))),
         }
         tool,compute=check[agent]
         with f.tool(agent,tool) as step:
@@ -170,11 +171,16 @@ def route(f,k,p):
         return dict(message=f'{agent} check complete.',**result)
     if k=='withdraw':return crm.withdraw(f,p)
     if k=='add_prospect':return crm.add_prospect(f,p)
+    if k=='add_demo_sponsor':return crm.add_demo_sponsor(f,p)
+    if k=='update_sponsor_email':return crm.update_email(f,p)
+    if k=='send_real_email':return crm.send_email(f,p)
     if k=='prepare_outreach':
         selected=[s for s in workspace(c,f.id)['sponsors'] if s['stage']=='Outreach Drafted' and s['draft']]
         if not selected:raise Conflict('There are no sponsor pitches ready for dispatch.')
-        actions=[dict(type='dispatch_simulated_pitch',title=f'Contact {s["name"]} in the simulation',sponsor_id=s['id']) for s in selected]
-        key=f.approval(f'Contact {len(selected)} shortlisted sponsors', 'Dispatch the selected drafts within the ClubOS sponsorship simulation.',actions)
+        from . import gmail_integration
+        live = gmail_integration.is_google_connected(f.e['club_id']) and any(s.get('contact_email') for s in selected)
+        actions=[dict(type='dispatch_simulated_pitch',title=(f'Send Gmail pitch to {s["name"]} ({s["contact_email"]})' if live and s.get('contact_email') else f'Contact {s["name"]} in the simulation'),sponsor_id=s['id']) for s in selected]
+        key=f.approval(f'Contact {len(selected)} shortlisted sponsors', 'Send real sponsorship pitches via Gmail to partners with contact emails, or simulate remaining drafts.' if live else 'Dispatch the selected drafts within the ClubOS sponsorship simulation.',actions)
         return dict(message='Sponsor outreach is ready for approval.',approval_id=key)
     if k=='simulate_dropout':
         partner=c.execute("""SELECT s.id FROM sponsors s WHERE s.event_id=? AND s.stage='Confirmed'

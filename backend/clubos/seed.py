@@ -26,10 +26,13 @@ def bootstrap(c):
     if not c.execute('SELECT 1 FROM events WHERE id=?',(BUILD,)).fetchone():
         seed_build(c)
     from .registration import form_for_event,publish
+    from .poster_studio import create_poster_record
     for eid,fields in ((DEMO,['team_name','team_size','track','github']),(BUILD,['experience','college'])):
         if not form_for_event(c,eid):
             event=get_event(c,eid)
             publish(c,eid,event['start_date'],fields)
+        if not c.execute('SELECT 1 FROM posters WHERE event_id=?',(eid,)).fetchone():
+            create_poster_record(c,eid,use_ai_image=False)
 
 def seed_event(c):
     today=date.today()

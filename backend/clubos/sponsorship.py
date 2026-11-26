@@ -7,6 +7,90 @@ from .db import insert,now,encode
 from .state import scoped,choice,number,required,STAGES,funding,task,Missing,Invalid,Conflict,due_in,iso,prospects
 from .recovery import currency,optimize
 
+def update_email(f, p):
+    s = sponsor(f, p.get('sponsor_id'))
+    email = required(p, 'contact_email', 254).lower()
+    if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
+        raise Invalid('Enter a valid sponsor contact email address.')
+    f.c.execute('UPDATE sponsors SET contact_email=? WHERE id=?', (email, s['id']))
+    f.note('Sponsor contact email updated', f'{s["name"]} · {email}', 'Magnet')
+    return dict(message='Sponsor contact email saved.', contact_email=email)
+
+
+def add_demo_sponsor(f, p):
+    name = required(p, 'name', 160)
+    email = required(p, 'contact_email', 254).lower()
+    if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
+        raise Invalid('Enter a valid sponsor contact email address.')
+    industry = (p.get('industry') or 'Technology & Developer Tools').strip()[:120]
+    desc = (p.get('description') or f'Live demo sponsor contact ({email}).').strip()[:1500]
+    pid = insert(
+        f.c, 'profiles', event_scope=f.id, name=name, industry=industry,
+        description=desc, tags='hackathon,student,tech', sponsorship_type='Financial',
+    )
+    sid = insert(
+        f.c, 'sponsors', event_id=f.id, prospect_id=pid,
+        stage='Shortlisted', contact_email=email,
+    )
+    f.log('Magnet', 'rank_sponsors', f'Added {name} ({email}) to sponsorship pipeline.')
+    f.note('Real sponsor added', f'{name} ({email})', 'Magnet')
+    outreach = draft(f, {'sponsor_id': sid}, 'outreach')
+    return dict(message=f'Added {name} and drafted a pitch.', sponsor_id=sid, draft=outreach['text'])
+
+
+def parse_email_subject_and_body(text: str, event_name: str, sponsor_name: str) -> tuple[str, str]:
+    lines = (text or '').strip().splitlines()
+    if lines and lines[0].lower().startswith('subject:'):
+        subject = lines[0].split(':', 1)[1].strip() or f'Sponsorship Partnership — {event_name}'
+        body = '\n'.join(lines[1:]).lstrip()
+        return subject, body or text
+    return f'Sponsorship Partnership — {event_name} × {sponsor_name}', text
+
+
+def send_email(f, p):
+    from . import gmail_integration
+    s = sponsor(f, p.get('sponsor_id'))
+    to_email = (p.get('to_email') or s.get('contact_email') or '').strip()
+    if not to_email:
+        raise Invalid('Add a recipient email address for this sponsor first.')
+    if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', to_email):
+        raise Invalid('Enter a valid recipient email address.')
+    if to_email != (s.get('contact_email') or ''):
+        f.c.execute('UPDATE sponsors SET contact_email=? WHERE id=?', (to_email, s['id']))
+
+    raw_text = (p.get('body') or s.get('draft') or '').strip()
+    if not raw_text:
+        raw_text = draft(f, {'sponsor_id': s['id']}, 'outreach')['text']
+    default_subj, default_body = parse_email_subject_and_body(raw_text, f.e['name'], s['name'])
+    subject = (p.get('subject') or default_subj).strip()[:200]
+    body = (p.get('body') if p.get('subject') else default_body).strip()
+
+    try:
+        res = gmail_integration.send_sponsor_email(
+            club_id=f.e['club_id'],
+            event_id=f.id,
+            sponsor_id=s['id'],
+            to_email=to_email,
+            subject=subject,
+            body=body,
+            conn=f.c,
+        )
+    except gmail_integration.GmailUnavailable as exc:
+        raise Conflict(str(exc)) from exc
+
+    follow = (date.today() + timedelta(days=s['follow_up_days'])).isoformat()
+    f.c.execute(
+        "UPDATE sponsors SET stage='Contacted', draft=?, follow_up_date=? WHERE id=?",
+        (f'Subject: {subject}\n\n{body}', follow, s['id']),
+    )
+    insert(f.c, 'communications', event_id=f.id, sponsor_id=s['id'], kind='gmail_outreach', text=f'Subject: {subject}\n\n{body}', created_at=now())
+    summary = f'Magnet sent sponsorship pitch to {to_email} via Gmail.'
+    with f.tool('Magnet', 'send_email', {'sponsor_id': s['id'], 'to_email': to_email}) as step:
+        step.update(summary=summary, mode='Gmail API', output={'message_id': res['message_id'], 'thread_id': res['thread_id']})
+    f.note(f'Sent pitch to {s["name"]}', summary, 'Magnet')
+    return dict(message=summary, **res)
+
+
 def sponsor(flow,key):
     s=scoped(flow.c,'sponsors',key,flow.id)
     s.update(dict(flow.c.execute('SELECT name,industry,description FROM profiles WHERE id=?',(s['prospect_id'],)).fetchone()))
@@ -37,12 +121,12 @@ def draft(f,p,kind):
         tier='Silver Sponsor'
         rationale='A website acknowledgement gives your team a focused way to reach students.'
     pkg=next((p for p in packages if p['name']==tier),packages[min(2,len(packages)-1)])
-    intro=f'{f.e["club"]} is organizing {f.e["name"]} for {f.e["target"]} students at {f.e["venue"]}. Our focus is {f.e["goals"].strip().rstrip(".") or f.e["type"]}.'
+    intro=f'{f.e["club"]} ({f.e["college"]}) is organizing {f.e["name"]} on {f.e["start_date"]} for {f.e["target"]} students at {f.e["venue"]}. Our focus is {f.e["goals"].strip().rstrip(".") or f.e["type"]}.'
     if kind=='proposal':
-        fallback=f'{f.e["name"]} × {s["name"]}\n\n{intro} As a {s["industry"].lower()} organization, your team can introduce practical tools to our campus community.\n\nProposed {pkg["name"]} package · {currency(pkg["amount"])}\n{pkg["benefits"]} {rationale}\n\nNext step: discuss the proposed scope and agree on deliverables together.'
+        fallback=f'Subject: Sponsorship Proposal — {f.e["name"]} × {s["name"]}\n\n{intro} As a {s["industry"].lower()} organization, your team can introduce practical tools to our campus community.\n\nProposed {pkg["name"]} package · {currency(pkg["amount"])}\n{pkg["benefits"]} {rationale}\n\nNext step: discuss the proposed scope and agree on deliverables together.'
     else:
         fallback=f'Subject: {"Following up on" if kind=="followup" else "Partnership invitation for"} {f.e["name"]}\n\nHello {s["name"]} team,\n\n{intro} We would love to explore a {pkg["name"]} partnership with your {s["industry"].lower()} team. The proposed {currency(pkg["amount"])} package includes {pkg["benefits"].lower()} {rationale}\n\nWould you be available to discuss this next week?\n\n{f.e["club"]}'
-    a=f.consult('Magnet','propose_package' if kind=='proposal' else 'draft_outreach',dict(kind=kind,company=s['name'],industry=s['industry'],event_type=f.e['type'],package=pkg['name'],requested_paise=pkg['amount'],audience=f.e['target'],theme=f.e['goals'],event_name=f.e['name'],benefits=pkg['benefits'],fit=match['reason'],tier_rationale=rationale),fallback)
+    a=f.consult('Magnet','propose_package' if kind=='proposal' else 'draft_outreach',dict(kind=kind,company=s['name'],industry=s['industry'],event_type=f.e['type'],event_date=f.e['start_date'],college=f.e['college'],package=pkg['name'],requested_paise=pkg['amount'],audience=f.e['target'],theme=f.e['goals'],event_name=f.e['name'],benefits=pkg['benefits'],fit=match['reason'],tier_rationale=rationale),fallback)
     stage='Outreach Drafted' if s['stage'] in ('Identified','Shortlisted') and kind=='outreach' else s['stage']
     f.c.execute('UPDATE sponsors SET draft=?,stage=? WHERE id=?',(a['text'],stage,s['id']))
     insert(f.c,'communications',event_id=f.id,sponsor_id=s['id'],kind=kind,text=a['text'],created_at=now())

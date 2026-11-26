@@ -53,7 +53,24 @@ def build(flow,plan):
     total=plan.estimated_budget
     with flow.tool('FormFlow','publish_registration',{'registration_deadline':plan.registration_deadline.isoformat()}) as step:
         form=publish(c,flow.id,plan.registration_deadline.isoformat(),plan.fields)
-        step.update(summary=f"Published the registration form with {2+len(form['fields'])} fields.",output=form)
+        gf_msg=""
+        try:
+            from . import google_oauth, forms_integration
+            if google_oauth.is_club_connected(e['club_id']):
+                questions = forms_integration.suggest_questions(e['name'], e.get('type', 'Event'), e.get('description', '') or brief if 'brief' in locals() else e.get('goals', ''))
+                gf = forms_integration.create_google_form(
+                    club_id=e['club_id'],
+                    event_id=flow.id,
+                    event_name=e['name'],
+                    event_data={**e, 'deadline': plan.registration_deadline.isoformat()},
+                    questions=questions,
+                    conn=c,
+                )
+                form = publish(c, flow.id, plan.registration_deadline.isoformat(), plan.fields)
+                gf_msg = f" Google Form live ({gf['question_count']} questions)."
+        except Exception:
+            pass
+        step.update(summary=f"Published the registration form with {2+len(form['fields'])} fields.{gf_msg}",output=form)
     with flow.tool('OpsLedger','build_event_plan',{'total_budget_paise':total}) as step:
         share=0
         for index,(category,percent,adjustable) in enumerate([('Venue',24,0),('Food & refreshments',30,0),('Prizes',26,0),('Merchandise',12,65),('Marketing',8,55)]):
@@ -87,3 +104,7 @@ def build(flow,plan):
             key=db.insert(c,'sponsors',event_id=flow.id,prospect_id=match['id'],stage='Shortlisted')
             sponsorship.draft(flow,{'sponsor_id':key},'outreach')
         step.update(summary=f'Prepared {len(matches)} sponsor pitches for organizer review.',output={'partners':[p['name'] for p in matches]})
+    with flow.tool('Canvas','generate_poster',{'event_name':e['name']}) as step:
+        from . import poster_studio
+        poster=poster_studio.create_poster_record(c,flow.id,use_ai_image=False)
+        step.update(summary=f"Created event poster ({poster['theme']}) with event details and QR.",output={'poster_id':poster['id'],'theme':poster['theme']})

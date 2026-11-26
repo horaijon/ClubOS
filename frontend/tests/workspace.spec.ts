@@ -73,7 +73,7 @@ test('every operational view renders with the demo data', async ({page})=>{
   const errors:string[]=[]
   page.on('pageerror',error=>errors.push(error.message))
   await page.request.post('/api/auth/demo')
-  for(const view of ['dashboard','sponsors','finance','agents','tasks','operations','marketing','risks','approvals','reports','copilot','workspace']){
+  for(const view of ['dashboard','posters','sponsors','finance','agents','tasks','operations','marketing','risks','approvals','reports','copilot','workspace']){
     await page.goto('/#'+view)
     await expect(page.getByRole('main').locator('h1').first()).toBeVisible()
   }

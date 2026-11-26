@@ -342,7 +342,9 @@ svg {
   display: flex;
   align-items: center;
   gap: 10px;
-  justify-content: space-between
+  justify-content: space-between;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .breadcrumb,
@@ -1929,14 +1931,10 @@ svg {
 }
 
 
-/* The workspace picks up the landing grid through its floating navigation. */
+/* Clean neutral canvas across all workspace tabs */
 .shell {
   min-height: 100dvh;
-  background: var(--brand-grid),
-    radial-gradient(ellipse at 16% 0%, #91acff 0, transparent 58%),
-    linear-gradient(135deg, #b5c9ff, #eef3ff 60%);
-  background-size: 64px 64px, 64px 64px, auto, auto;
-  background-attachment: fixed;
+  background: var(--canvas, #F6F8FC);
 }
 
 .sidebar.glass--cobalt {

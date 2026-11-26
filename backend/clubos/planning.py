@@ -11,10 +11,11 @@ TOOLS = {
     'Nexus':{'dispatch','consolidate','answer','apply_plan','query_event_state','review_proposal','propose_approval_action','decode_brief'},
     'Atlas':{'plan_tasks','trace_dependencies','reassign','create_task','revise_deliverables'},
     'Ledger':{'allocate_budget','project_balance','review_terms','record_payment','create_sponsor_receivable','update_budget_allocation','record_expense'},
-    'Magnet':{'rank_sponsors','draft_outreach','extract_terms','propose_package','follow_up'},
+    'Magnet':{'rank_sponsors','draft_outreach','extract_terms','propose_package','follow_up','send_email'},
     'Echo':{'draft_campaign','plan_branding'},
     'Relay':{'work_checklist','schedule_deliverables','register'},
-    'Sentinel':{'scan','detect','verify','raise_risk_alert'}
+    'Sentinel':{'scan','detect','verify','raise_risk_alert'},
+    'Canvas':{'generate_poster','revise_poster'},
 }
 
 class Flow:
@@ -174,4 +175,9 @@ def generate(flow,seed=False):
     if not seed and f['shortfall']:
         flow.risk('funding-gap','Sponsorship funding still to secure','Planned expenses exceed currently committed funds.','High',f'₹{f["shortfall"]/100:,.2f} projected shortfall.','Build the sponsor pipeline or review adjustable expenses.',['Ledger','Magnet','Sentinel'])
     flow.log('Sentinel','scan','Checked projected funding, task dependencies and event deadlines.')
+    try:
+        from . import poster_studio
+        poster_studio.create_poster_record(c, eid, use_ai_image=False)
+    except Exception:
+        pass
     flow.note('Event plan launched',f'{len(ids)} assigned tasks and {len(matches)} matched sponsor profiles.','Atlas')

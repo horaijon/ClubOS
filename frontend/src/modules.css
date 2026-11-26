@@ -1,10 +1,10 @@
 .m-view {
-    --m-panel: var(--surface, #f7f9ff);
-    --m-lines: var(--line, #c8d3ec);
-    --m-text: var(--text, #171d38);
-    --m-muted: var(--muted, #4d5d7e);
-    --m-accent: var(--accent, #1a40c5);
-    --m-teal: var(--teal, #17654b);
+    --m-panel: var(--card, #FFFFFF);
+    --m-lines: var(--card-border, #E5EAF2);
+    --m-text: var(--text, #0f172a);
+    --m-muted: var(--muted, #64748B);
+    --m-accent: var(--accent, #2563EB);
+    --m-teal: var(--teal, #059669);
     color: var(--m-text);
     font-size: 14px;
     min-width: 0
@@ -97,13 +97,13 @@
 }
 
 .m-view .m-btn.primary {
-    background: var(--lime);
-    border-color: #aac841;
-    color: var(--ink)
+    background: #0F172A;
+    border-color: #0F172A;
+    color: #FFFFFF
 }
 
 .m-view .m-btn.primary:hover {
-    background: var(--lime-hover)
+    background: #1E293B
 }
 
 .m-view .m-btn.danger {
@@ -129,8 +129,9 @@
 .m-stat,
 .m-card {
     border: 1px solid var(--m-lines);
-    border-radius: 16px;
+    border-radius: 14px;
     background: var(--m-panel);
+    box-shadow: var(--card-shadow, 0 1px 2px rgba(15, 23, 42, 0.04));
     min-width: 0
 }
 

@@ -136,7 +136,10 @@ def workspace(c,eid):
     today=date.today().isoformat()
     for s in sponsors:
         for k,v in pmap[s['prospect_id']].items():
-            if k!='id': s[k]=v
+            if k!='id':
+                if k=='contact_email' and (s.get('contact_email') or '').strip():
+                    continue
+                s[k]=v
         due=receivables.get(s['id'])
         if due:
             outstanding=max(0,s['committed']-s['received'])
@@ -163,6 +166,8 @@ def workspace(c,eid):
     m['actions']=len(result['runs'])
     m['minutes_saved']=sum(efforts.get(r['agent'],3) for r in result['runs'])
     from .planning import TOOLS
+    from .poster_studio import list_posters
+    result['posters']=list_posters(c,eid)
     result['agent_tools']={agent:sorted(tools) for agent,tools in TOOLS.items()}
     result['metrics']=m
     counts=Counter(p['created_at'][:10] for p in result['participants'])

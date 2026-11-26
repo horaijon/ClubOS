@@ -16,15 +16,37 @@ export interface Metrics {
   total_tasks: number; overdue: number; active_risks: number; pending_approvals: number; readiness: number; actions: number; minutes_saved: number;
 }
 export interface Task { id: string; title: string; description: string; department: string; owner: string; status: string; priority: string; due_date: string; }
-export interface Run {id:string; agent:string; trigger:string; summary:string; mode:string; status:string; created_at:string; workflow_id:string;}
-export interface RegistrationForm {slug:string;deadline:string;public_url?:string;fields:{key:string;label:string}[]}
+export interface Run {id:string; agent:string; trigger:string; tool?:string; summary:string; mode:string; status:string; created_at:string; workflow_id:string;}
+export interface RegistrationForm {
+  slug:string; deadline:string; public_url?:string; fields:{key:string;label:string}[];
+  is_google_form?:boolean; google_form_id?:string; responder_uri?:string; edit_uri?:string; response_count?:number;
+}
+export interface SponsorItem {
+  id:string; name:string; stage:string; industry?:string; committed?:number; received?:number; contact_email?:string; draft?:string;
+}
+export interface ApprovalItem {
+  id:string; title:string; description?:string; status:string; workflow_id?:string; risk_id?:string; created_at?:string;
+  actions?:{type:string; title:string; amount?:number; saving?:number; [k:string]:unknown}[];
+}
+export interface PosterItem {
+  id:string; event_id:string; title:string; kind:'generated'|'reference'|'final';
+  prompt:string; theme:string; mime_type:string; is_active:boolean;
+  created_by:string; created_at:string; image_url:string;
+  design?:Record<string,unknown>;
+}
 export interface Snapshot {
  registration_form: RegistrationForm|null;
- event: EventRecord; metrics: Metrics; tasks: Task[]; sponsors: {id:string;name:string;stage:string}[];
+ event: EventRecord; metrics: Metrics; tasks: Task[]; sponsors: SponsorItem[];
  budget:{id:string;category:string;planned:number;actual:number}[]; risks:{id:string;title:string;severity:string;status:string}[];
- approvals:{id:string;title:string;status:string}[]; runs: Run[]; marketing: unknown[];
- participants:{id:string;created_at:string}[]; members:{id:string;name:string;role:string}[];
+ approvals:ApprovalItem[]; runs: Run[]; marketing: unknown[];
+ participants:{id:string;name?:string;email?:string;checked_in?:number;created_at:string;answers?:Record<string,string>}[]; members:{id:string;name:string;role:string}[];
  registration_history?:{date:string;count:number;cumulative:number}[]; activity:{id:string;title:string;description:string;agent:string;created_at:string}[];
+ posters?: PosterItem[];
+}
+export interface GoogleStatus {
+  connected: boolean;
+  email: string | null;
+  available: boolean;
 }
 export type EventOption = Pick<EventRecord,'id'|'name'>;
 const currency = new Intl.NumberFormat('en-IN', {style:'currency',currency:'INR',minimumFractionDigits:0,maximumFractionDigits:2});

@@ -33,10 +33,10 @@
 
 .dash-workspace {
   padding: clamp(16px, 2.3vw, 28px);
-  border: 1px solid #ffffffb0;
-  border-radius: 28px;
-  background: linear-gradient(140deg, #edf3ffd8, #eaf0ffa1);
-  box-shadow: 0 14px 36px #1d3a751a, inset 0 1px 0 #ffffffbd;
+  border: 1px solid var(--card-border, #E5EAF2);
+  border-radius: 20px;
+  background: var(--canvas, #F6F8FC);
+  box-shadow: var(--card-shadow);
   min-width: 0;
 }
 

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { CheckCircle2, Inbox, LoaderCircle, Search, X } from 'lucide-react'
 
+import type { GoogleStatus } from '../data'
 import type { TraceStep } from '../LiveTrace'
 
 export interface ModuleProps {
@@ -13,9 +14,12 @@ export interface ModuleProps {
   trace: TraceStep[]
   traceConnected: boolean
   traceRequest: string
+  googleStatus?: GoogleStatus
+  refreshGoogleStatus?: () => Promise<void>
+  onConnectGoogle?: () => void
 }
 export type Row = Record<string, any>
-export type ViewProps = Pick<ModuleProps, 'data' | 'act' | 'navigate' | 'trace' | 'traceConnected' | 'traceRequest'>
+export type ViewProps = Pick<ModuleProps, 'data' | 'act' | 'navigate' | 'trace' | 'traceConnected' | 'traceRequest' | 'googleStatus' | 'refreshGoogleStatus' | 'onConnectGoogle'> & { refresh?: () => Promise<void> }
 export { money } from '../data'
 export function day(value?: string, year = false) {
   if (!value) return 'No date'

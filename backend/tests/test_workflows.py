@@ -271,7 +271,7 @@ def test_prompt_launch_registration_and_simulated_sponsor_lifecycle(workspace):
     assert initial['metrics']['planned'] == 6_000_000
     assert initial['event']['sponsorship_target'] == 4_500_000
     assert len(initial['tasks']) == len(initial['milestones']) == 8
-    assert {s['agent_name'] for s in trace.entries(CLUB,'trace_id',job)} == {'Nexus','FormFlow','OpsLedger','Magnet'}
+    assert {s['agent_name'] for s in trace.entries(CLUB,'trace_id',job)} == {'Nexus','FormFlow','OpsLedger','Magnet','Canvas'}
     public_url = '/api/registration/' + form['slug']
     assert workspace.get(public_url+'/qr.svg').headers['content-type'].startswith('image/svg+xml')
     with TestClient(app) as visitor:

@@ -17,7 +17,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
-from . import api, auth, db, engine, trace, registration
+from . import api, auth, db, engine, forms_integration, gmail_integration, google_oauth, google_routes, poster_studio, trace, registration
 from .seed import CLUB
 from .reports import event_report
 
@@ -34,10 +34,27 @@ def sweep():
             logger.exception("Reminder sweep failed for an event")
 
 
+def google_sync_sweep():
+    try:
+        gmail_integration.poll_gmail_replies()
+    except Exception:
+        logger.exception("Gmail reply poll sweep failed")
+    try:
+        forms_integration.poll_form_responses()
+    except Exception:
+        logger.exception("Google Forms poll sweep failed")
+
+
 async def reminders():
     while True:
         await asyncio.sleep(60)
         await asyncio.to_thread(sweep)
+
+
+async def google_poller():
+    while True:
+        await asyncio.sleep(18)
+        await asyncio.to_thread(google_sync_sweep)
 
 
 @asynccontextmanager
@@ -54,12 +71,16 @@ async def lifespan(app):
             conn.execute("UPDATE planning_jobs SET club_id=?", (CLUB,))
         conn.execute("UPDATE planning_jobs SET status='failed', detail='Server restarted during planning. Check Events before retrying.' WHERE status IN ('running','queued')")
     worker = asyncio.create_task(reminders())
+    poller = asyncio.create_task(google_poller())
     try:
         yield
     finally:
         worker.cancel()
+        poller.cancel()
         with suppress(asyncio.CancelledError):
             await worker
+        with suppress(asyncio.CancelledError):
+            await poller
 
 
 app = FastAPI(title="ClubOS",version="1.0",lifespan=lifespan)
@@ -71,6 +92,9 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 app.include_router(auth.router)
 app.include_router(api.router)
 app.include_router(registration.router)
+app.include_router(google_oauth.router)
+app.include_router(google_routes.router)
+app.include_router(poster_studio.router)
 
 
 @app.middleware("http")

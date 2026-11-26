@@ -145,10 +145,39 @@ def execute(flow,a,defaults=True):
         sponsor=scoped(c,'sponsors',a['sponsor_id'],eid)
         if sponsor['stage']!='Outreach Drafted' or not sponsor['draft']:
             raise Conflict('A sponsor pitch has changed since this approval was proposed.')
-        with flow.tool('Magnet','draft_outreach',{'sponsor_id':sponsor['id']}) as step:
-            c.execute("UPDATE sponsors SET stage='Contacted',follow_up_date=NULL WHERE id=?",(sponsor['id'],))
-            insert(c,'communications',event_id=eid,sponsor_id=sponsor['id'],kind='simulation_outreach',text=sponsor['draft'],created_at=now())
-            step.update(summary=a['title'],output={'delivery':'simulated'})
+        from . import gmail_integration
+        from .sponsorship import parse_email_subject_and_body, sponsor as load_sponsor
+        loaded = load_sponsor(flow, sponsor['id'])
+        to_email = (loaded.get('contact_email') or '').strip()
+        if to_email and gmail_integration.is_google_connected(flow.e['club_id']):
+            subject, body = parse_email_subject_and_body(sponsor['draft'], flow.e['name'], loaded['name'])
+            with flow.tool('Magnet','send_email',{'sponsor_id':sponsor['id'],'to_email':to_email}) as step:
+                res = gmail_integration.send_sponsor_email(
+                    flow.e['club_id'], eid, sponsor['id'], to_email, subject, body, conn=c
+                )
+                c.execute("UPDATE sponsors SET stage='Contacted',follow_up_date=NULL WHERE id=?",(sponsor['id'],))
+                insert(c,'communications',event_id=eid,sponsor_id=sponsor['id'],kind='gmail_outreach',text=sponsor['draft'],created_at=now())
+                step.update(summary=f'Magnet sent pitch to {to_email} via Gmail.',mode='Gmail API',output={'delivery':'gmail',**res})
+        else:
+            with flow.tool('Magnet','draft_outreach',{'sponsor_id':sponsor['id']}) as step:
+                c.execute("UPDATE sponsors SET stage='Contacted',follow_up_date=NULL WHERE id=?",(sponsor['id'],))
+                insert(c,'communications',event_id=eid,sponsor_id=sponsor['id'],kind='simulation_outreach',text=sponsor['draft'],created_at=now())
+                step.update(summary=a['title'],output={'delivery':'simulated'})
+    elif kind=='send_reply_email':
+        from . import gmail_integration
+        to_email = a.get('to_email', '')
+        subject = a.get('subject', f"Re: {flow.e['name']}")
+        body = a.get('body', '')
+        if to_email and gmail_integration.is_google_connected(flow.e['club_id']):
+            with flow.tool('Magnet','send_email',{'sponsor_id':a.get('sponsor_id'),'to_email':to_email}) as step:
+                res = gmail_integration.send_sponsor_email(
+                    flow.e['club_id'], eid, a['sponsor_id'], to_email, subject, body,
+                    thread_id=a.get('thread_id'), conn=c,
+                )
+                insert(c,'communications',event_id=eid,sponsor_id=a['sponsor_id'],kind='gmail_followup',text=f'Subject: {subject}\n\n{body}',created_at=now())
+                step.update(summary=f'Magnet sent follow-up email to {to_email} via Gmail.',mode='Gmail API',output=res)
+        else:
+            flow.note('Follow-up draft approved', f'Draft ready for {to_email or "sponsor"}.', 'Magnet')
     elif kind=='reduce_budget':
         b=scoped(c,'budget',a['category_id'],eid)
         spent=c.execute('SELECT COALESCE(SUM(amount),0) FROM expenses WHERE category_id=?',(b['id'],)).fetchone()[0]

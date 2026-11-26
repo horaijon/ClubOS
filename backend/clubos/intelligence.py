@@ -71,21 +71,46 @@ def _cached_client():
 
 def structured(agent, payload, schema, fallback):
     """Exclude credentials, raw participant records and contact emails from agent context."""
-    if not os.getenv("GEMINI_API_KEY"):
-        return fallback, "Deterministic fallback", "Gemini key is not configured"
-    try:
-        from google.genai import types
-        prompt = json.dumps(payload, ensure_ascii=False, default=str)[:26000]
-        prompt = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "[email omitted]", prompt)
-        response = _client().models.generate_content(
-            model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"), contents=prompt,
-            config=types.GenerateContentConfig(system_instruction=ROLES[agent] + POLICY,
-                response_mime_type="application/json", response_schema=schema, temperature=0.25))
-        return schema.model_validate_json(response.text), "Gemini", ""
-    except Exception as exc:
-        # SDK errors may carry the source prompt or URL. Only record the error class.
-        log.warning("Gemini failed for %s (%s)", agent, type(exc).__name__)
-        return fallback, "Deterministic fallback", "Gemini was unavailable or returned an invalid response"
+    prompt = json.dumps(payload, ensure_ascii=False, default=str)[:26000]
+    prompt = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "[email omitted]", prompt)
+
+    if os.getenv("GEMINI_API_KEY"):
+        try:
+            from google.genai import types
+            response = _client().models.generate_content(
+                model=os.getenv("GEMINI_MODEL", "gemini-flash-latest"), contents=prompt,
+                config=types.GenerateContentConfig(system_instruction=ROLES[agent] + POLICY,
+                    response_mime_type="application/json", response_schema=schema, temperature=0.25))
+            return schema.model_validate_json(response.text), "Gemini", ""
+        except Exception as exc:
+            log.warning("Gemini failed for %s (%s)", agent, type(exc).__name__)
+
+    if os.getenv("OPENAI_API_KEY"):
+        try:
+            import httpx
+            resp = httpx.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"},
+                json={
+                    "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                    "messages": [
+                        {"role": "system", "content": ROLES[agent] + POLICY + " Return valid JSON matching the schema."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "response_format": {"type": "json_object"},
+                    "temperature": 0.25,
+                },
+                timeout=18.0,
+            )
+            if resp.status_code == 200:
+                text = resp.json()["choices"][0]["message"]["content"]
+                return schema.model_validate_json(text), "OpenAI", ""
+        except Exception as exc:
+            log.warning("OpenAI failed for %s (%s)", agent, type(exc).__name__)
+
+    if not os.getenv("GEMINI_API_KEY") and not os.getenv("OPENAI_API_KEY"):
+        return fallback, "Deterministic fallback", "AI key is not configured"
+    return fallback, "Deterministic fallback", "AI provider was unavailable or returned an invalid response"
 
 
 def advise(agent: str, context: dict, fallback: str) -> dict:

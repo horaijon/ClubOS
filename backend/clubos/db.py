@@ -80,11 +80,22 @@ def transaction(write=False):
 def init_db():
     from .seed import bootstrap
     from .registration import SCHEMA as REGISTRATION_SCHEMA
+    from .google_oauth import GOOGLE_OAUTH_SCHEMA
+    from .gmail_integration import GMAIL_SCHEMA
+    from .forms_integration import SCHEMA as FORMS_SCHEMA
+    from .poster_studio import POSTER_SCHEMA
     c = connect()
     try:
         c.execute('PRAGMA journal_mode=WAL')
-        c.executescript(SCHEMA + REGISTRATION_SCHEMA)
-        for table,column,kind in [('clubs','available_funds','INTEGER NOT NULL DEFAULT 0'),('tasks','completed_at','TEXT'),('approvals','basis_balance','INTEGER')]:
+        c.executescript(SCHEMA + REGISTRATION_SCHEMA + GOOGLE_OAUTH_SCHEMA + GMAIL_SCHEMA + FORMS_SCHEMA + POSTER_SCHEMA)
+        for table,column,kind in [
+            ('clubs','available_funds','INTEGER NOT NULL DEFAULT 0'),
+            ('tasks','completed_at','TEXT'),
+            ('approvals','basis_balance','INTEGER'),
+            ('sponsors','contact_email',"TEXT DEFAULT ''"),
+            ('profiles','contact_email',"TEXT DEFAULT ''"),
+            ('profiles','website',"TEXT DEFAULT ''"),
+        ]:
             if column not in {row['name'] for row in c.execute(f'PRAGMA table_info({table})')}:
                 c.execute(f'ALTER TABLE {table} ADD COLUMN {column} {kind}')
     finally:
